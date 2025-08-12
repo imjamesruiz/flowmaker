@@ -31,7 +31,7 @@ if not settings.DEBUG:
     )
 
 # Include routers
-app.include_router(auth.router, prefix=settings.API_V1_STR, tags=["authentication"])
+app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["authentication"])
 app.include_router(workflows.router, prefix=settings.API_V1_STR, tags=["workflows"])
 app.include_router(integrations.router, prefix=settings.API_V1_STR, tags=["integrations"])
 app.include_router(executions.router, prefix=settings.API_V1_STR, tags=["executions"])
