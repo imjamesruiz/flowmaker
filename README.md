@@ -159,41 +159,6 @@ infrastructure/
 
 ### Environment Variables
 
-#### Backend (.env)
-```env
-# Database
-DATABASE_URL=postgresql://user:password@localhost/worqly
-
-# Redis
-REDIS_URL=redis://localhost:6379
-
-# Security
-SECRET_KEY=your-secret-key-change-in-production
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-
-# OAuth Providers
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-SLACK_CLIENT_ID=your-slack-client-id
-SLACK_CLIENT_SECRET=your-slack-client-secret
-
-# API Settings
-API_V1_STR=/api/v1
-PROJECT_NAME=Worqly
-
-# CORS
-BACKEND_CORS_ORIGINS=["http://localhost:3000"]
-
-# Celery
-CELERY_BROKER_URL=redis://localhost:6379/0
-CELERY_RESULT_BACKEND=redis://localhost:6379/0
-```
-
-#### Frontend (.env)
-```env
-VITE_API_BASE_URL=http://localhost:8000/api/v1
-```
 
 ### Fixing .env Encoding Issues (Windows)
 
