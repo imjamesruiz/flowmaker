@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
 from app.schemas.user import UserCreate, UserResponse, UserLogin, Token
-from app.auth.security import create_access_token, get_password_hash, verify_password
+from app.auth.security import get_password_hash, verify_password
 from app.auth.dependencies import get_current_active_user
+from app.services.jwt_service import JWTService
 from datetime import timedelta
 from app.config import settings
 
@@ -74,16 +75,16 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
             detail="Inactive user"
         )
     
-    # Create access token
+    # Create and store access token
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
-    )
+    token, expires_at = JWTService.create_token(user, access_token_expires)
+    JWTService.store_token(db, user, token, expires_at)
     
     return {
-        "access_token": access_token,
+        "access_token": token,
         "token_type": "bearer",
-        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        "user": user
     }
 
 
@@ -94,15 +95,31 @@ def get_current_user_info(current_user: User = Depends(get_current_active_user))
 
 
 @router.post("/refresh", response_model=Token)
-def refresh_token(current_user: User = Depends(get_current_active_user)):
+def refresh_token(current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
     """Refresh access token"""
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": current_user.email}, expires_delta=access_token_expires
-    )
+    token, expires_at = JWTService.create_token(current_user, access_token_expires)
+    JWTService.store_token(db, current_user, token, expires_at)
     
     return {
-        "access_token": access_token,
+        "access_token": token,
         "token_type": "bearer",
         "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
-    } 
+    }
+
+
+@router.post("/logout")
+def logout(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """Logout user and revoke token"""
+    JWTService.revoke_token(db, credentials.credentials)
+    return {"message": "Successfully logged out"}
+
+
+@router.post("/logout-all")
+def logout_all(current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    """Logout user from all devices by revoking all tokens"""
+    JWTService.revoke_all_user_tokens(db, current_user.id)
+    return {"message": "Successfully logged out from all devices"} 

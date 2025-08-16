@@ -3,8 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
-from app.auth.security import verify_token
-from app.schemas.user import TokenData
+from app.services.jwt_service import JWTService
 
 # HTTP Bearer token scheme
 security = HTTPBearer()
@@ -21,11 +20,7 @@ def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    token_data = verify_token(credentials.credentials)
-    if token_data is None:
-        raise credentials_exception
-    
-    user = db.query(User).filter(User.email == token_data.email).first()
+    user = JWTService.validate_token(db, credentials.credentials)
     if user is None:
         raise credentials_exception
     

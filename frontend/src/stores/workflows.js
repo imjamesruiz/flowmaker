@@ -77,6 +77,27 @@ export const useWorkflowsStore = defineStore('workflows', () => {
     }
   }
 
+  const updateWorkflowBulk = async (id, workflowData) => {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await api.put(`/workflows/${id}/bulk`, workflowData)
+      const index = workflows.value.findIndex(w => w.id === id)
+      if (index !== -1) {
+        workflows.value[index] = response.data
+      }
+      if (currentWorkflow.value?.id === id) {
+        currentWorkflow.value = response.data
+      }
+      return response.data
+    } catch (err) {
+      error.value = err.message
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   const deleteWorkflow = async (id) => {
     loading.value = true
     error.value = null
@@ -99,6 +120,20 @@ export const useWorkflowsStore = defineStore('workflows', () => {
     error.value = null
     try {
       const response = await api.post(`/workflows/${id}/execute`, executionData)
+      return response.data
+    } catch (err) {
+      error.value = err.message
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const testWorkflow = async (id, executionData = {}) => {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await api.post(`/workflows/${id}/test`, executionData)
       return response.data
     } catch (err) {
       error.value = err.message
@@ -204,8 +239,10 @@ export const useWorkflowsStore = defineStore('workflows', () => {
     fetchWorkflow,
     createWorkflow,
     updateWorkflow,
+    updateWorkflowBulk,
     deleteWorkflow,
     executeWorkflow,
+    testWorkflow,
     createNode,
     updateNode,
     deleteNode,

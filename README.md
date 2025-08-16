@@ -1,375 +1,253 @@
-# Worqly - No-Code Workflow Automation Platform
+# Worqly Workflow Editor
 
-Worqly is a powerful, no-code workflow automation platform that enables users to create complex multi-step integrations between services like Gmail, Slack, and Google Sheets without writing any code. Built with modern technologies and designed for scalability, Worqly provides a visual drag-and-drop interface for building, testing, and executing workflows.
+A powerful workflow editor with drag-and-drop connections, real-time execution, and persistent storage.
 
-## 🚀 Features
+## Features
 
-### Core Functionality
-- **Visual Workflow Builder**: Drag-and-drop interface using Joint.js for intuitive workflow creation
-- **Multi-Service Integrations**: Connect Gmail, Slack, Google Sheets, and custom webhooks
-- **Real-time Execution**: Live monitoring of workflow execution with detailed logs
-- **OAuth Authentication**: Secure token management for third-party services
-- **Workflow Templates**: Pre-built templates for common automation scenarios
-- **Version Control**: Track workflow changes and rollback capabilities
+- **Visual Workflow Editor**: Drag-and-drop interface for creating workflows
+- **Real-time Connections**: Connect nodes with validation and visual feedback
+- **Autosave**: Automatic saving with debouncing (800ms)
+- **Workflow Execution**: Test workflows with topological sorting
+- **Multiple Node Types**: Trigger, Action, Condition, Transformer, Webhook
+- **Persistent Storage**: Save and load workflows from database
+- **Modern UI**: Built with Tailwind CSS and shadcn/ui
 
-### Advanced Features
-- **Conditional Logic**: Advanced branching and decision-making in workflows
-- **Data Transformation**: Built-in tools for data manipulation and formatting
-- **Error Handling**: Comprehensive error handling with retry mechanisms
-- **Scheduling**: Time-based workflow triggers and execution
-- **Collaboration**: Team-based workflow sharing and editing
-- **API Access**: RESTful API for programmatic workflow management
-
-## 🏗️ Architecture
-
-### Backend (FastAPI + Python)
-```
-backend/
-├── app/
-│   ├── models/          # SQLAlchemy database models
-│   ├── schemas/         # Pydantic validation schemas
-│   ├── routers/         # FastAPI route handlers
-│   ├── services/        # Business logic services
-│   │   └── integrations/ # Third-party service integrations
-│   ├── auth/           # Authentication and security
-│   ├── core/           # Core application modules
-│   └── config.py       # Configuration management
-├── requirements.txt    # Python dependencies
-└── Dockerfile         # Container configuration
-```
-
-### Frontend (Vue.js 3 + TypeScript)
-```
-frontend/
-├── src/
-│   ├── components/     # Reusable Vue components
-│   ├── views/          # Page components
-│   ├── stores/         # Pinia state management
-│   ├── services/       # API and external services
-│   ├── router/         # Vue Router configuration
-│   └── assets/         # Static assets
-├── package.json        # Node.js dependencies
-└── vite.config.mjs     # Build configuration
-```
-
-### Infrastructure
-```
-infrastructure/
-├── docker-compose.yml  # Development environment
-├── kubernetes/         # Production deployment
-└── terraform/          # Infrastructure as Code
-```
-
-## 🛠️ Technology Stack
+## Tech Stack
 
 ### Backend
-- **FastAPI**: Modern, fast web framework for building APIs
-- **SQLAlchemy**: SQL toolkit and ORM for database operations
-- **PostgreSQL**: Primary database for data persistence
-- **Redis**: Caching and message broker for Celery
-- **Celery**: Distributed task queue for async workflow execution
-- **Pydantic**: Data validation and settings management
-- **JWT**: JSON Web Tokens for authentication
+- **FastAPI** (Python) - High-performance web framework
+- **SQLAlchemy** - Database ORM
+- **PostgreSQL** - Database
+- **Celery** - Background task processing
+- **JWT** - Authentication
 
 ### Frontend
-- **Vue.js 3**: Progressive JavaScript framework with Composition API
-- **Joint.js**: JavaScript diagramming library for workflow canvas
-- **Pinia**: State management for Vue applications
-- **Tailwind CSS**: Utility-first CSS framework
-- **Vite**: Fast build tool and development server
-- **Socket.io**: Real-time communication for live updates
+- **Vue.js 3** (Current) - Progressive JavaScript framework
+- **React + TypeScript** (Alternative) - Modern React with TypeScript
+- **React Flow** - Flow chart library
+- **Zustand** - State management
+- **Tailwind CSS** - Utility-first CSS framework
+- **shadcn/ui** - UI component library
 
-### DevOps & Infrastructure
-- **Docker**: Containerization for consistent deployments
-- **Kubernetes**: Container orchestration for production
-- **Terraform**: Infrastructure as Code for cloud resources
-- **GitHub Actions**: CI/CD pipeline automation
-
-## 📦 Installation & Setup
+## Quick Start
 
 ### Prerequisites
-- Python 3.11+
+- Python 3.10+
 - Node.js 18+
-- Docker & Docker Compose
-- PostgreSQL 15+
-- Redis 7+
+- PostgreSQL
+- Redis (for Celery)
 
-### Quick Start (Development)
+### Backend Setup
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/your-org/worqly.git
-   cd worqly
+   git clone <repository-url>
+   cd flowmaker
    ```
 
-2. **Set up environment variables**
+2. **Set up Python environment**
    ```bash
-   cp backend/.env.example backend/.env
-   # Edit backend/.env with your configuration
+   cd backend
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
    ```
 
-3. **Start the development environment**
+3. **Configure environment**
    ```bash
-   docker-compose up -d
+   cp .env.example .env
+   # Edit .env with your database and Redis settings
    ```
 
-4. **Install frontend dependencies**
+4. **Initialize database**
+   ```bash
+   python -c "from app.database import init_db; init_db()"
+   ```
+
+5. **Create test user**
+   ```bash
+   python create_user_direct.py
+   ```
+
+6. **Start the backend**
+   ```bash
+   python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+   ```
+
+### Frontend Setup
+
+1. **Install dependencies**
    ```bash
    cd frontend
    npm install
    ```
 
-5. **Start the development servers**
+2. **Start development server**
    ```bash
-   # Backend (from project root)
-   cd backend
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-   # Frontend (in another terminal)
-   cd frontend
    npm run dev
    ```
 
-6. **Access the application**
-   - Frontend: http://localhost:3000
+3. **Access the application**
+   - Frontend: http://localhost:5173
    - Backend API: http://localhost:8000
-   - API Documentation: http://localhost:8000/docs
+   - API Docs: http://localhost:8000/docs
 
-### Production Deployment
-
-1. **Build the production images**
-   ```bash
-   docker-compose -f docker-compose.prod.yml build
-   ```
-
-2. **Deploy with Kubernetes**
-   ```bash
-   kubectl apply -f infrastructure/kubernetes/
-   ```
-
-3. **Set up monitoring and logging**
-   ```bash
-   kubectl apply -f infrastructure/monitoring/
-   ```
-
-## 🔧 Configuration
-
-### Environment Variables
-
-
-### Fixing .env Encoding Issues (Windows)
-
-If the backend fails to start with a UnicodeDecodeError related to `.env`, it likely has a BOM or is not UTF-8 encoded.
-
-Recommended options:
-
-- VS Code / Cursor:
-  1. Open `backend/.env`.
-  2. Click the encoding label in the status bar (bottom-right).
-  3. Click "Save with Encoding...".
-  4. Choose "UTF-8" (not "UTF-8 with BOM").
-  5. Save.
-
-- PowerShell (may fail if the file is locked):
-  ```powershell
-  Get-Content .env -Raw | Set-Content -Encoding UTF8 .env
-  ```
-  If you see "The process cannot access the file because it is being used by another process.", close apps that might be holding the file, or use the automated fixer below.
-
-- Automated fixer (preferred):
-  ```bash
-  cd backend
-  python -c "from app.utils.fix_env_encoding import fix_env_file_encoding; fix_env_file_encoding()"
-  ```
-  You should see: "✅ .env file encoding fixed and saved as UTF-8 without BOM."
-
-## 📚 Usage Guide
-
-### Creating Your First Workflow
-
-1. **Sign up and log in** to the Worqly platform
-2. **Create an integration** for the services you want to connect (Gmail, Slack, etc.)
-3. **Navigate to Workflows** and click "Create New Workflow"
-4. **Add nodes** by dragging them from the palette to the canvas:
-   - **Trigger nodes**: Start your workflow (webhook, schedule, email, etc.)
-   - **Action nodes**: Perform actions (send email, post message, update sheet, etc.)
-   - **Condition nodes**: Add logic and branching
-   - **Transformer nodes**: Manipulate data between steps
-5. **Connect nodes** by drawing connections between them
-6. **Configure each node** using the properties panel
-7. **Test your workflow** using the test button
-8. **Save and activate** your workflow
-
-### Workflow Examples
-
-#### Email to Slack Notification
-```
-Gmail Trigger (New Email) → Condition (Check Subject) → Slack Action (Send Message)
-```
-
-#### Data Collection Pipeline
-```
-Webhook Trigger → Transformer (Format Data) → Google Sheets Action (Append Row)
-```
-
-#### Approval Workflow
-```
-Form Submission → Email Action (Send Approval Request) → Wait → Condition (Approved?) → Email Action (Send Confirmation)
-```
-
-## 🔌 API Reference
+## API Endpoints
 
 ### Authentication
-All API endpoints require authentication using JWT tokens.
+- `POST /api/v1/auth/login` - User login
+- `POST /api/v1/auth/register` - User registration
+- `POST /api/v1/auth/logout` - User logout
 
-```bash
-# Login
-POST /api/v1/auth/login
-{
-  "email": "user@example.com",
-  "password": "password"
-}
+### Workflows
+- `GET /api/v1/workflows` - List workflows
+- `POST /api/v1/workflows` - Create workflow
+- `GET /api/v1/workflows/{id}` - Get workflow
+- `PUT /api/v1/workflows/{id}/bulk` - Update workflow (bulk)
+- `DELETE /api/v1/workflows/{id}` - Delete workflow
+- `POST /api/v1/workflows/{id}/test` - Test workflow execution
 
-# Use token in headers
-Authorization: Bearer <your-jwt-token>
+### Nodes & Connections
+- `GET /api/v1/workflows/{id}/nodes` - List nodes
+- `POST /api/v1/workflows/{id}/nodes` - Create node
+- `PUT /api/v1/workflows/{id}/nodes/{node_id}` - Update node
+- `DELETE /api/v1/workflows/{id}/nodes/{node_id}` - Delete node
+
+## Database Schema
+
+### Workflows
+```sql
+CREATE TABLE workflows (
+  id          SERIAL PRIMARY KEY,
+  name        VARCHAR(255) NOT NULL,
+  description TEXT,
+  owner_id    INTEGER REFERENCES users(id),
+  is_active   BOOLEAN DEFAULT true,
+  created_at  TIMESTAMPTZ DEFAULT now(),
+  updated_at  TIMESTAMPTZ DEFAULT now()
+);
 ```
 
-### Core Endpoints
-
-#### Workflows
-```bash
-GET    /api/v1/workflows          # List workflows
-POST   /api/v1/workflows          # Create workflow
-GET    /api/v1/workflows/{id}     # Get workflow
-PUT    /api/v1/workflows/{id}     # Update workflow
-DELETE /api/v1/workflows/{id}     # Delete workflow
-POST   /api/v1/workflows/{id}/execute  # Execute workflow
+### Workflow Nodes
+```sql
+CREATE TABLE workflow_nodes (
+  id          SERIAL PRIMARY KEY,
+  workflow_id INTEGER REFERENCES workflows(id) ON DELETE CASCADE,
+  node_id     VARCHAR(255) NOT NULL,
+  node_type   VARCHAR(50) NOT NULL,
+  name        VARCHAR(255) NOT NULL,
+  position_x  FLOAT NOT NULL,
+  position_y  FLOAT NOT NULL,
+  config      JSONB DEFAULT '{}',
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
 ```
 
-#### Integrations
-```bash
-GET    /api/v1/integrations       # List integrations
-POST   /api/v1/integrations       # Create integration
-GET    /api/v1/integrations/{id}  # Get integration
-PUT    /api/v1/integrations/{id}  # Update integration
-DELETE /api/v1/integrations/{id}  # Delete integration
-POST   /api/v1/integrations/{id}/test  # Test integration
+### Workflow Connections
+```sql
+CREATE TABLE workflow_connections (
+  id              SERIAL PRIMARY KEY,
+  workflow_id     INTEGER REFERENCES workflows(id) ON DELETE CASCADE,
+  connection_id   VARCHAR(255) NOT NULL,
+  source_node_id  VARCHAR(255) NOT NULL,
+  target_node_id  VARCHAR(255) NOT NULL,
+  source_port     VARCHAR(50),
+  target_port     VARCHAR(50),
+  condition       JSONB,
+  created_at      TIMESTAMPTZ DEFAULT now()
+);
 ```
 
-#### Executions
-```bash
-GET    /api/v1/executions         # List executions
-GET    /api/v1/executions/{id}    # Get execution details
-GET    /api/v1/executions/{id}/logs  # Get execution logs
-```
+## Workflow Execution
 
-## 🧪 Testing
+The workflow executor uses topological sorting to determine execution order:
 
-### Backend Tests
+1. **Build Graph**: Create adjacency list from nodes and connections
+2. **Find Start Nodes**: Nodes with no incoming connections
+3. **Topological Sort**: Kahn's algorithm to determine execution order
+4. **Execute Nodes**: Run each node in order, passing context between nodes
+5. **Handle Conditions**: Route to true/false paths based on condition results
+
+### Node Types
+
+- **Trigger**: Start workflow execution
+- **Action**: Perform operations (email, API calls, etc.)
+- **Condition**: Make decisions (if/else logic)
+- **Transformer**: Transform data between nodes
+- **Webhook**: External triggers and callbacks
+
+## Development
+
+### Adding New Node Types
+
+1. **Backend**: Add runner in `WorkflowExecutor`
+2. **Frontend**: Add node type to `NodeKind` type
+3. **UI**: Add node to palette and styling
+
+### Testing
+
 ```bash
+# Backend tests
 cd backend
-pytest tests/ -v
-pytest tests/ --cov=app --cov-report=html
-```
+pytest
 
-### Frontend Tests
-```bash
+# Frontend tests
 cd frontend
-npm run test
-npm run test:coverage
+npm test
 ```
 
-### E2E Tests
+### Code Style
+
+- **Backend**: Black, isort, flake8
+- **Frontend**: ESLint, Prettier
+
+## Deployment
+
+### Docker
+
 ```bash
-npm run test:e2e
+# Build and run with Docker Compose
+docker-compose up -d
 ```
 
-## 📊 Monitoring & Observability
+### Production
 
-### Metrics
-- Workflow execution success/failure rates
-- API response times and throughput
-- Database query performance
-- Celery task queue metrics
+1. Set `DEBUG=False` in environment
+2. Configure production database
+3. Set up reverse proxy (nginx)
+4. Configure SSL certificates
+5. Set up monitoring and logging
 
-### Logging
-- Structured logging with correlation IDs
-- Error tracking and alerting
-- Audit trails for workflow changes
+## Troubleshooting
 
-### Health Checks
-- Database connectivity
-- Redis availability
-- External service status
-- Celery worker health
+### Common Issues
 
-## 🔒 Security
+1. **Connection errors**: Check database and Redis connections
+2. **Authentication issues**: Verify JWT secret and token expiration
+3. **CORS errors**: Configure CORS settings in backend
+4. **Node not found**: Check node type registration
 
-### Authentication & Authorization
-- JWT-based authentication
-- Role-based access control (RBAC)
-- OAuth 2.0 for third-party integrations
-- Secure token storage and refresh
+### Logs
 
-### Data Protection
-- Encryption at rest and in transit
-- Secure OAuth token handling
-- Input validation and sanitization
-- SQL injection prevention
+- Backend logs: `backend/logs/`
+- Frontend logs: Browser console
+- Celery logs: `celery.log`
 
-### API Security
-- Rate limiting and throttling
-- CORS configuration
-- Request validation
-- Audit logging
+## Contributing
 
-## 🤝 Contributing
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
 
-1. **Fork the repository**
-2. **Create a feature branch** (`git checkout -b feature/amazing-feature`)
-3. **Commit your changes** (`git commit -m 'Add amazing feature'`)
-4. **Push to the branch** (`git push origin feature/amazing-feature`)
-5. **Open a Pull Request**
+## License
 
-### Development Guidelines
-- Follow the existing code style and conventions
-- Write comprehensive tests for new features
-- Update documentation for API changes
-- Ensure all tests pass before submitting PR
+MIT License - see LICENSE file for details.
 
-## 📄 License
+## Support
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-- **Documentation**: [docs.worqly.com](https://docs.worqly.com)
-- **Issues**: [GitHub Issues](https://github.com/your-org/worqly/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-org/worqly/discussions)
-- **Email**: support@worqly.com
-
-## 🗺️ Roadmap
-
-### Upcoming Features
-- [ ] Advanced workflow templates marketplace
-- [ ] Real-time collaboration on workflows
-- [ ] Advanced analytics and insights
-- [ ] Mobile application
-- [ ] Enterprise SSO integration
-- [ ] Custom node development SDK
-- [ ] Workflow versioning and branching
-- [ ] Advanced scheduling and triggers
-
-### Performance Improvements
-- [ ] GraphQL API for efficient data fetching
-- [ ] WebSocket-based real-time updates
-- [ ] Caching layer for frequently accessed data
-- [ ] Database query optimization
-- [ ] CDN integration for static assets
-
----
-
-**Built with ❤️ by the Worqly Team**
+For support and questions:
+- Create an issue on GitHub
+- Check the documentation
+- Review the API docs at `/docs`

@@ -129,7 +129,8 @@ const handleRegister = async () => {
     await authStore.register({
       full_name: form.fullName,
       email: form.email,
-      password: form.password
+      password: form.password,
+      confirm_password: form.confirmPassword
     })
     
     toast.success('Account created successfully!')

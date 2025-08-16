@@ -21,6 +21,7 @@ class User(Base):
     workflows = relationship("Workflow", back_populates="owner", cascade="all, delete-orphan")
     integrations = relationship("Integration", back_populates="user", cascade="all, delete-orphan")
     oauth_tokens = relationship("OAuthToken", back_populates="user", cascade="all, delete-orphan")
+    jwt_tokens = relationship("JWTToken", back_populates="user", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<User(id={self.id}, email='{self.email}')>" 

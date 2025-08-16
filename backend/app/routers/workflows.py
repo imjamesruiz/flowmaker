@@ -8,15 +8,17 @@ from app.schemas.workflow import (
     WorkflowCreate, WorkflowUpdate, WorkflowResponse, WorkflowWithNodes,
     WorkflowNodeCreate, WorkflowNodeUpdate, WorkflowNodeResponse,
     WorkflowConnectionCreate, WorkflowConnectionUpdate, WorkflowConnectionResponse,
-    WorkflowExecutionRequest
+    WorkflowExecutionRequest, WorkflowBulkUpdate, WorkflowPayload, ExecutionResult,
+    WorkflowValidationResult
 )
 from app.auth.dependencies import get_current_active_user
 from app.core.tasks import execute_workflow
+from app.services.workflow_executor import WorkflowExecutor
 
 router = APIRouter()
 
 
-@router.get("/", response_model=List[WorkflowResponse])
+@router.get("/workflows", response_model=List[WorkflowResponse])
 def get_workflows(
     skip: int = 0,
     limit: int = 100,
@@ -30,7 +32,7 @@ def get_workflows(
     return workflows
 
 
-@router.post("/", response_model=WorkflowResponse)
+@router.post("/workflows", response_model=WorkflowResponse)
 def create_workflow(
     workflow_data: WorkflowCreate,
     current_user: User = Depends(get_current_active_user),
@@ -47,7 +49,7 @@ def create_workflow(
     return workflow
 
 
-@router.get("/{workflow_id}", response_model=WorkflowWithNodes)
+@router.get("/workflows/{workflow_id}", response_model=WorkflowWithNodes)
 def get_workflow(
     workflow_id: int,
     current_user: User = Depends(get_current_active_user),
@@ -68,7 +70,7 @@ def get_workflow(
     return workflow
 
 
-@router.put("/{workflow_id}", response_model=WorkflowResponse)
+@router.put("/workflows/{workflow_id}", response_model=WorkflowResponse)
 def update_workflow(
     workflow_id: int,
     workflow_data: WorkflowUpdate,
@@ -95,7 +97,122 @@ def update_workflow(
     return workflow
 
 
-@router.delete("/{workflow_id}")
+@router.put("/workflows/{workflow_id}/bulk", response_model=WorkflowWithNodes)
+def update_workflow_bulk(
+    workflow_id: int,
+    workflow_data: WorkflowBulkUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Update a workflow with nodes and connections in a single transaction"""
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id,
+        Workflow.owner_id == current_user.id
+    ).first()
+    
+    if not workflow:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workflow not found"
+        )
+    
+    try:
+        # Update workflow basic info
+        if workflow_data.name is not None:
+            workflow.name = workflow_data.name
+        if workflow_data.description is not None:
+            workflow.description = workflow_data.description
+        
+        # Handle nodes if provided
+        if workflow_data.nodes is not None:
+            # Clear existing nodes and connections
+            db.query(WorkflowConnection).filter(WorkflowConnection.workflow_id == workflow_id).delete()
+            db.query(WorkflowNode).filter(WorkflowNode.workflow_id == workflow_id).delete()
+            
+            # Create new nodes
+            for node_data in workflow_data.nodes:
+                node = WorkflowNode(
+                    node_id=node_data.id,
+                    node_type=node_data.type,
+                    name=node_data.data.get('name', 'Unnamed Node'),
+                    position_x=node_data.position.get('x', 0),
+                    position_y=node_data.position.get('y', 0),
+                    config=node_data.data.get('config', {}),
+                    workflow_id=workflow_id
+                )
+                db.add(node)
+        
+        # Handle edges if provided
+        if workflow_data.edges is not None:
+            for edge_data in workflow_data.edges:
+                connection = WorkflowConnection(
+                    connection_id=edge_data.id,
+                    source_node_id=edge_data.source,
+                    target_node_id=edge_data.target,
+                    source_port=edge_data.sourceHandle,
+                    target_port=edge_data.targetHandle,
+                    condition={"label": edge_data.label} if edge_data.label else None,
+                    workflow_id=workflow_id
+                )
+                db.add(connection)
+        
+        db.commit()
+        db.refresh(workflow)
+        return workflow
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to update workflow: {str(e)}"
+        )
+
+
+@router.post("/workflows/{workflow_id}/validate", response_model=WorkflowValidationResult)
+def validate_workflow(
+    workflow_id: int,
+    workflow_data: WorkflowBulkUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Validate a workflow structure"""
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id,
+        Workflow.owner_id == current_user.id
+    ).first()
+    
+    if not workflow:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workflow not found"
+        )
+    
+    if not workflow_data.nodes or not workflow_data.edges:
+        return WorkflowValidationResult(
+            valid=False,
+            errors=["Workflow must contain nodes and edges"]
+        )
+    
+    # Convert to WorkflowPayload format
+    payload = WorkflowPayload(
+        id=str(workflow_id),
+        name=workflow.name,
+        nodes=workflow_data.nodes,
+        edges=workflow_data.edges,
+        viewport=workflow_data.viewport
+    )
+    
+    # Validate using executor
+    executor = WorkflowExecutor()
+    validation_result = executor.validate_workflow(payload)
+    
+    return WorkflowValidationResult(
+        valid=validation_result["valid"],
+        errors=validation_result["errors"]
+    )
+
+
+@router.delete("/workflows/{workflow_id}")
 def delete_workflow(
     workflow_id: int,
     current_user: User = Depends(get_current_active_user),
@@ -118,7 +235,7 @@ def delete_workflow(
     return {"message": "Workflow deleted successfully"}
 
 
-@router.post("/{workflow_id}/execute")
+@router.post("/workflows/{workflow_id}/execute")
 def execute_workflow_endpoint(
     workflow_id: int,
     execution_request: WorkflowExecutionRequest,
@@ -151,8 +268,66 @@ def execute_workflow_endpoint(
     }
 
 
+@router.post("/workflows/{workflow_id}/test", response_model=ExecutionResult)
+def test_workflow_endpoint(
+    workflow_id: int,
+    execution_request: WorkflowExecutionRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Test execute a workflow synchronously"""
+    workflow = db.query(Workflow).filter(
+        Workflow.id == workflow_id,
+        Workflow.owner_id == current_user.id
+    ).first()
+    
+    if not workflow:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workflow not found"
+        )
+    
+    # Prepare workflow data for execution
+    workflow_data = WorkflowPayload(
+        id=str(workflow_id),
+        name=workflow.name,
+        nodes=[
+            {
+                "id": node.node_id,
+                "type": node.node_type,
+                "position": {"x": node.position_x, "y": node.position_y},
+                "data": {
+                    "name": node.name,
+                    "config": node.config or {}
+                }
+            }
+            for node in workflow.nodes
+        ],
+        edges=[
+            {
+                "id": conn.connection_id,
+                "source": conn.source_node_id,
+                "target": conn.target_node_id,
+                "sourceHandle": conn.source_port,
+                "targetHandle": conn.target_port,
+                "label": conn.condition.get("label") if conn.condition else None
+            }
+            for conn in workflow.connections
+        ]
+    )
+    
+    # Execute workflow
+    executor = WorkflowExecutor()
+    result = executor.execute_workflow(
+        workflow_data, 
+        trigger_data=execution_request.trigger_data
+    )
+    
+    return result
+
+
 # Node endpoints
-@router.get("/{workflow_id}/nodes", response_model=List[WorkflowNodeResponse])
+@router.get("/workflows/{workflow_id}/nodes", response_model=List[WorkflowNodeResponse])
 def get_workflow_nodes(
     workflow_id: int,
     current_user: User = Depends(get_current_active_user),
@@ -173,7 +348,7 @@ def get_workflow_nodes(
     return workflow.nodes
 
 
-@router.post("/{workflow_id}/nodes", response_model=WorkflowNodeResponse)
+@router.post("/workflows/{workflow_id}/nodes", response_model=WorkflowNodeResponse)
 def create_workflow_node(
     workflow_id: int,
     node_data: WorkflowNodeCreate,
@@ -202,7 +377,7 @@ def create_workflow_node(
     return node
 
 
-@router.put("/{workflow_id}/nodes/{node_id}", response_model=WorkflowNodeResponse)
+@router.put("/workflows/{workflow_id}/nodes/{node_id}", response_model=WorkflowNodeResponse)
 def update_workflow_node(
     workflow_id: int,
     node_id: int,
@@ -231,7 +406,7 @@ def update_workflow_node(
     return node
 
 
-@router.delete("/{workflow_id}/nodes/{node_id}")
+@router.delete("/workflows/{workflow_id}/nodes/{node_id}")
 def delete_workflow_node(
     workflow_id: int,
     node_id: int,
@@ -257,7 +432,7 @@ def delete_workflow_node(
 
 
 # Connection endpoints
-@router.get("/{workflow_id}/connections", response_model=List[WorkflowConnectionResponse])
+@router.get("/workflows/{workflow_id}/connections", response_model=List[WorkflowConnectionResponse])
 def get_workflow_connections(
     workflow_id: int,
     current_user: User = Depends(get_current_active_user),
@@ -278,7 +453,7 @@ def get_workflow_connections(
     return workflow.connections
 
 
-@router.post("/{workflow_id}/connections", response_model=WorkflowConnectionResponse)
+@router.post("/workflows/{workflow_id}/connections", response_model=WorkflowConnectionResponse)
 def create_workflow_connection(
     workflow_id: int,
     connection_data: WorkflowConnectionCreate,
@@ -307,7 +482,7 @@ def create_workflow_connection(
     return connection
 
 
-@router.put("/{workflow_id}/connections/{connection_id}", response_model=WorkflowConnectionResponse)
+@router.put("/workflows/{workflow_id}/connections/{connection_id}", response_model=WorkflowConnectionResponse)
 def update_workflow_connection(
     workflow_id: int,
     connection_id: int,
@@ -336,7 +511,7 @@ def update_workflow_connection(
     return connection
 
 
-@router.delete("/{workflow_id}/connections/{connection_id}")
+@router.delete("/workflows/{workflow_id}/connections/{connection_id}")
 def delete_workflow_connection(
     workflow_id: int,
     connection_id: int,

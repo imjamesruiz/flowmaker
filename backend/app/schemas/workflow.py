@@ -21,6 +21,42 @@ class WorkflowUpdate(BaseModel):
     settings: Optional[Dict[str, Any]] = None
 
 
+# Frontend node format
+class WFNode(BaseModel):
+    id: str
+    type: str  # trigger, action, condition, transformer, webhook
+    position: Dict[str, float]  # {x, y}
+    data: Dict[str, Any]  # {name, config, ports}
+
+
+# Frontend edge format
+class WFEdge(BaseModel):
+    id: str
+    source: str
+    sourceHandle: Optional[str] = None
+    target: str
+    targetHandle: Optional[str] = None
+    label: Optional[str] = None
+
+
+# Frontend workflow format
+class WorkflowPayload(BaseModel):
+    id: str
+    name: str
+    nodes: List[WFNode]
+    edges: List[WFEdge]
+    viewport: Optional[Dict[str, Any]] = None
+
+
+class WorkflowBulkUpdate(BaseModel):
+    id: Optional[str] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    nodes: Optional[List[WFNode]] = None
+    edges: Optional[List[WFEdge]] = None
+    viewport: Optional[Dict[str, Any]] = None
+
+
 class WorkflowResponse(WorkflowBase):
     id: int
     owner_id: int
@@ -107,4 +143,31 @@ class WorkflowWithNodes(WorkflowResponse):
 
 class WorkflowExecutionRequest(BaseModel):
     trigger_data: Optional[Dict[str, Any]] = None
-    test_mode: bool = False 
+    test_mode: bool = False
+
+
+# Execution result schemas
+class ExecutionLog(BaseModel):
+    node_id: str
+    node_type: str
+    node_name: str
+    status: str  # success, error
+    start_time: str
+    execution_time: float
+    input: Optional[Any] = None
+    output: Optional[Any] = None
+    error: Optional[str] = None
+    context_patch: Optional[Dict[str, Any]] = None
+
+
+class ExecutionResult(BaseModel):
+    success: bool
+    error: Optional[str] = None
+    logs: List[ExecutionLog]
+    outputs: Optional[Dict[str, Any]] = None
+    context: Optional[Dict[str, Any]] = None
+
+
+class WorkflowValidationResult(BaseModel):
+    valid: bool
+    errors: List[str] 

@@ -4,13 +4,14 @@ from typing import List
 from app.database import get_db
 from app.models.user import User
 from app.models.execution import WorkflowExecution, ExecutionLog
+from app.models.workflow import Workflow
 from app.schemas.execution import ExecutionResponse, ExecutionLogResponse, ExecutionWithLogs
 from app.auth.dependencies import get_current_active_user
 
 router = APIRouter()
 
 
-@router.get("/", response_model=List[ExecutionResponse])
+@router.get("/executions", response_model=List[ExecutionResponse])
 def get_executions(
     workflow_id: int = None,
     skip: int = 0,
@@ -30,7 +31,7 @@ def get_executions(
     return executions
 
 
-@router.get("/{execution_id}", response_model=ExecutionWithLogs)
+@router.get("/executions/{execution_id}", response_model=ExecutionWithLogs)
 def get_execution(
     execution_id: int,
     current_user: User = Depends(get_current_active_user),
@@ -51,7 +52,7 @@ def get_execution(
     return execution
 
 
-@router.get("/{execution_id}/logs", response_model=List[ExecutionLogResponse])
+@router.get("/executions/{execution_id}/logs", response_model=List[ExecutionLogResponse])
 def get_execution_logs(
     execution_id: int,
     current_user: User = Depends(get_current_active_user),
@@ -77,7 +78,7 @@ def get_execution_logs(
     return logs
 
 
-@router.delete("/{execution_id}")
+@router.delete("/executions/{execution_id}")
 def delete_execution(
     execution_id: int,
     current_user: User = Depends(get_current_active_user),

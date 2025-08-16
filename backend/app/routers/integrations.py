@@ -10,7 +10,7 @@ from app.auth.dependencies import get_current_active_user
 router = APIRouter()
 
 
-@router.get("/", response_model=List[IntegrationResponse])
+@router.get("/integrations", response_model=List[IntegrationResponse])
 def get_integrations(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
@@ -22,7 +22,7 @@ def get_integrations(
     return integrations
 
 
-@router.post("/", response_model=IntegrationResponse)
+@router.post("/integrations", response_model=IntegrationResponse)
 def create_integration(
     integration_data: IntegrationCreate,
     current_user: User = Depends(get_current_active_user),
@@ -39,7 +39,7 @@ def create_integration(
     return integration
 
 
-@router.get("/{integration_id}", response_model=IntegrationResponse)
+@router.get("/integrations/{integration_id}", response_model=IntegrationResponse)
 def get_integration(
     integration_id: int,
     current_user: User = Depends(get_current_active_user),
@@ -60,7 +60,7 @@ def get_integration(
     return integration
 
 
-@router.put("/{integration_id}", response_model=IntegrationResponse)
+@router.put("/integrations/{integration_id}", response_model=IntegrationResponse)
 def update_integration(
     integration_id: int,
     integration_data: IntegrationUpdate,
@@ -87,7 +87,7 @@ def update_integration(
     return integration
 
 
-@router.delete("/{integration_id}")
+@router.delete("/integrations/{integration_id}")
 def delete_integration(
     integration_id: int,
     current_user: User = Depends(get_current_active_user),
@@ -110,7 +110,7 @@ def delete_integration(
     return {"message": "Integration deleted successfully"}
 
 
-@router.post("/{integration_id}/test")
+@router.post("/integrations/{integration_id}/test")
 def test_integration(
     integration_id: int,
     current_user: User = Depends(get_current_active_user),

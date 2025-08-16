@@ -81,6 +81,8 @@ const logout = async () => {
 </script>
 
 <style>
+@import '@/assets/workflow-tokens.css';
+
 #app {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }

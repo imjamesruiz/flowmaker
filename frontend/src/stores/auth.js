@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import api from '@/services/api'
+import { authAPI } from '@/services/api'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref(null)
@@ -12,15 +12,12 @@ export const useAuthStore = defineStore('auth', () => {
   const login = async (credentials) => {
     loading.value = true
     try {
-      const response = await api.post('/auth/login', credentials)
+      const response = await authAPI.login(credentials)
       const { access_token, user: userData } = response.data
       
       token.value = access_token
       user.value = userData
       localStorage.setItem('token', access_token)
-      
-      // Set auth header for future requests
-      api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
       
       return response.data
     } catch (error) {
@@ -33,7 +30,7 @@ export const useAuthStore = defineStore('auth', () => {
   const register = async (userData) => {
     loading.value = true
     try {
-      const response = await api.post('/auth/register', userData)
+      const response = await authAPI.register(userData)
       return response.data
     } catch (error) {
       throw error
@@ -48,9 +45,6 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = null
       token.value = null
       localStorage.removeItem('token')
-      
-      // Clear auth header
-      delete api.defaults.headers.common['Authorization']
     } catch (error) {
       console.error('Logout error:', error)
     }
@@ -60,7 +54,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (!token.value) return
     
     try {
-      const response = await api.get('/auth/me')
+      const response = await authAPI.getProfile()
       user.value = response.data
     } catch (error) {
       // Token might be invalid, clear it
@@ -73,12 +67,11 @@ export const useAuthStore = defineStore('auth', () => {
     if (!token.value) return
     
     try {
-      const response = await api.post('/auth/refresh')
+      const response = await authAPI.refreshToken()
       const { access_token } = response.data
       
       token.value = access_token
       localStorage.setItem('token', access_token)
-      api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
       
       return access_token
     } catch (error) {
@@ -90,7 +83,6 @@ export const useAuthStore = defineStore('auth', () => {
   // Initialize auth state
   const init = async () => {
     if (token.value) {
-      api.defaults.headers.common['Authorization'] = `Bearer ${token.value}`
       try {
         await fetchUser()
       } catch (error) {

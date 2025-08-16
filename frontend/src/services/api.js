@@ -3,7 +3,7 @@ import { useAuthStore } from '@/stores/auth'
 
 // Create axios instance
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
+  baseURL: 'http://localhost:8000/api/v1',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -64,26 +64,33 @@ export const authAPI = {
   refreshToken: () => api.post('/auth/refresh'),
 }
 
-export const workflowsAPI = {
+export const workflowAPI = {
+  // Main workflow endpoints
   getAll: (params) => api.get('/workflows', { params }),
-  getById: (id) => api.get(`/workflows/${id}`),
+  getWorkflow: (id) => api.get(`/workflows/${id}`),
   create: (data) => api.post('/workflows', data),
+  saveWorkflow: (id, data) => api.put(`/workflows/${id}/bulk`, data),
   update: (id, data) => api.put(`/workflows/${id}`, data),
   delete: (id) => api.delete(`/workflows/${id}`),
-  execute: (id, data) => api.post(`/workflows/${id}/execute`, data),
   
-  // Nodes
+  // Execution endpoints
+  execute: (id, data) => api.post(`/workflows/${id}/execute`, data),
+  testWorkflow: (id, data) => api.post(`/workflows/${id}/test`, data),
+  validate: (id, data) => api.post(`/workflows/${id}/validate`, data),
+  
+  // Individual node/connection endpoints (for granular operations)
   getNodes: (workflowId) => api.get(`/workflows/${workflowId}/nodes`),
   createNode: (workflowId, data) => api.post(`/workflows/${workflowId}/nodes`, data),
   updateNode: (workflowId, nodeId, data) => api.put(`/workflows/${workflowId}/nodes/${nodeId}`, data),
   deleteNode: (workflowId, nodeId) => api.delete(`/workflows/${workflowId}/nodes/${nodeId}`),
   
-  // Connections
   getConnections: (workflowId) => api.get(`/workflows/${workflowId}/connections`),
   createConnection: (workflowId, data) => api.post(`/workflows/${workflowId}/connections`, data),
   updateConnection: (workflowId, connectionId, data) => api.put(`/workflows/${workflowId}/connections/${connectionId}`, data),
   deleteConnection: (workflowId, connectionId) => api.delete(`/workflows/${workflowId}/connections/${connectionId}`),
 }
+
+export const workflowsAPI = workflowAPI // Alias for backward compatibility
 
 export const integrationsAPI = {
   getAll: () => api.get('/integrations'),

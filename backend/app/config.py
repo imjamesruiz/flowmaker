@@ -1,6 +1,22 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
 import os
+from typing import Optional
+
+# Try to import pydantic_settings, fallback to pydantic if not available
+try:
+    from pydantic_settings import BaseSettings, SettingsConfigDict
+except ImportError:
+    try:
+        from pydantic import BaseSettings
+        from pydantic import Field
+        # Create a simple SettingsConfigDict equivalent
+        class SettingsConfigDict:
+            def __init__(self, **kwargs):
+                self.env_file = kwargs.get('env_file')
+                self.env_file_encoding = kwargs.get('env_file_encoding', 'utf-8')
+                self.case_sensitive = kwargs.get('case_sensitive', True)
+    except ImportError:
+        raise ImportError("Please install pydantic: pip install pydantic")
+
 from .utils.fix_env_encoding import fix_env_file_encoding
 
 
@@ -41,12 +57,11 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     DEBUG: bool = True
     
-    # Pydantic Settings v2 configuration
-    model_config = SettingsConfigDict(
-        env_file=os.path.join(BACKEND_DIR, ".env"),
-        env_file_encoding="utf-8",
-        case_sensitive=True,
-    )
+    # Pydantic Settings configuration
+    class Config:
+        env_file = os.path.join(BACKEND_DIR, ".env")
+        env_file_encoding = "utf-8"
+        case_sensitive = True
 
 
 try:
