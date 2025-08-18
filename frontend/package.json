@@ -35,6 +35,9 @@
     "@heroicons/vue": "^2.1.1",
     "vue-toastification": "^2.0.0-rc.5",
     "date-fns": "^3.6.0",
-    "lodash-es": "^4.17.21"
+    "lodash-es": "^4.17.21",
+    "reactflow": "^11.10.1",
+    "zustand": "^4.4.7",
+    "nanoid": "^5.0.4"
   }
 }

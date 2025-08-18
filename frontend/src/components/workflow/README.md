@@ -1,349 +1,167 @@
-# Workflow Builder Components
+# Workflow Canvas Implementation
 
-A comprehensive drag-and-drop workflow builder with a modern design system, built with Vue 3 and TypeScript.
+This directory contains the enhanced workflow canvas implementation with drawing/connection mode, validation, and undo/redo functionality.
 
-## 🎨 Design System
+## Features
 
-### Color Palette
-- **Primary**: #6C5CE7 (Worqly Purple)
-- **Surface**: #0B0D12 (dark) / #F8FAFC (light)
-- **Node Types**:
-  - Trigger: #2ECC71
-  - Action: #377DFF
-  - Condition: #F4D03F
-  - Transformer: #8E44AD
-  - Webhook: #E74C3C
+### ✅ Implemented
 
-### Design Tokens
-All design tokens are defined in `@/assets/workflow-tokens.css`:
-- Spacing: 12/16/24 grid system
-- Border radius: 16px (nodes), 8px (chips)
-- Shadows: sm/md/lg with low opacity
-- Transitions: 150-200ms ease
-- Focus rings: ring-2 ring-purple-400/60
+- **Graph Schema**: Type-safe workflow definition with ports and data types
+- **Connection Mode**: Drag and drop connections between compatible ports
+- **Validation**: Real-time validation with visual feedback
+- **Undo/Redo**: History management with keyboard shortcuts
+- **Mock API**: localStorage-based persistence for development
+- **Simulation**: Mock workflow execution with trace visualization
+- **Keyboard Shortcuts**: Delete/Backspace, Ctrl+Z/Ctrl+Shift+Z, Ctrl+S
 
-## 🧩 Components
+### 🎯 Core Components
 
-### CanvasShell.vue
-The main canvas container with grid, minimap, and controls.
+1. **Graph Types** (`src/types/graph.ts`)
+   - `DType`: 'event' | 'json' | 'text' | 'any'
+   - `Port`: Input/output ports with type and capacity constraints
+   - `NodeModel`: Nodes with ports and parameters
+   - `EdgeModel`: Connections between ports
+   - `Workflow`: Complete workflow definition
 
-**Features:**
-- Grid background with snap guides
-- Zoom controls (in/out/reset/fit)
-- MiniMap with viewport indicator
-- Auto-pan when dragging near edges
-- Keyboard shortcuts (Space = pan, Esc = cancel)
-- Empty state with quick-add buttons
+2. **Validation** (`src/utils/validation.ts`)
+   - `isValidConnection()`: Connection validation rules
+   - `validateGraph()`: Graph-wide validation
+   - Type matching and capacity checking
 
-**Props:**
-```typescript
-interface CanvasShellProps {
-  theme: 'light' | 'dark'
-  showMinimap: boolean
-  nodeCount: number
-  edgeCount: number
-  showEmptyState: boolean
-}
-```
+3. **State Management** (`src/store/workflowStore.ts`)
+   - Zustand store with undo/redo
+   - Node and edge management
+   - Validation state tracking
 
-**Events:**
-- `canvas-click`: Canvas background click
-- `canvas-context-menu`: Right-click on canvas
-- `zoom-change`: Zoom level changed
-- `pan-change`: Pan position changed
-- `node-drop`: Node dropped on canvas
-- `quick-node-add`: Quick node button clicked
+4. **Canvas** (`src/components/WorkflowCanvas.tsx`)
+   - React Flow integration
+   - Connection handling
+   - Keyboard shortcuts
+   - Toolbar with Save/Validate/Simulate
 
-### NodeCard.vue
-Individual workflow nodes with ports and interactions.
+5. **Custom Node** (`src/components/WorkflowNode.tsx`)
+   - Port visualization
+   - Issue badges
+   - Type indicators
 
-**Features:**
-- Rounded corners (16px) with soft shadows
-- Gradient backgrounds by node type
-- Input/output ports with tooltips
-- Hover and selection states
-- Context menu actions (configure, duplicate, delete)
-- Keyboard navigation support
-- Springy drop animations
-
-**Props:**
-```typescript
-interface NodeCardProps {
-  id: string
-  data: {
-    label: string
-    type: 'trigger' | 'action' | 'condition' | 'transformer' | 'webhook'
-    status: 'idle' | 'running' | 'success' | 'error'
-    inputs: HandleData[]
-    outputs: HandleData[]
-    description?: string
-  }
-  selected: boolean
-  dragging: boolean
-  isConnecting: boolean
-}
-```
-
-**Events:**
-- `node-click`: Node clicked
-- `node-context-menu`: Right-click on node
-- `start-connection`: Port connection started
-- `configure`: Configure node
-- `duplicate`: Duplicate node
-- `delete`: Delete node
-
-### Edge.vue
-Connection lines between nodes with labels and interactions.
-
-**Features:**
-- Orthogonal routing with rounded corners
-- Edge labels with condition chips
-- Hover effects with glow
-- Context menu for edge actions
-- Error states with tooltips
-- Arrow markers
-
-**Props:**
-```typescript
-interface EdgeProps {
-  id: string
-  sourceX: number
-  sourceY: number
-  targetX: number
-  targetY: number
-  sourcePosition: string
-  targetPosition: string
-  data: {
-    label?: string
-    condition?: string
-    type?: 'default' | 'conditional' | 'error' | 'success'
-    errorMessage?: string
-  }
-  selected: boolean
-}
-```
-
-**Events:**
-- `edge-click`: Edge clicked
-- `edge-context-menu`: Right-click on edge
-- `edge-label-edit`: Edit edge label
-- `edge-rename`: Rename edge
-- `edge-delete`: Delete edge
-
-## 🎯 Interaction Model
-
-### Drag & Drop
-1. **Drag from palette**: Drag node types to canvas
-2. **Auto-snap**: Nodes snap to grid (8px)
-3. **Springy drop**: Elastic animation on drop
-4. **Magnetic snapping**: Visual guides for alignment
-
-### Connections
-1. **Drag-to-connect**: Drag from output port to input port
-2. **Click-to-connect**: Click output → wire mode → click input
-3. **Visual feedback**: Valid targets glow, invalid show ✕
-4. **Auto-reroute**: Edges avoid node overlap
-
-### Keyboard Navigation
-- **Tab**: Cycle through nodes and ports
-- **Enter**: Start connection or activate
-- **Escape**: Cancel current operation
-- **Delete/Backspace**: Delete selected items
-- **Space**: Toggle pan mode
-- **Ctrl/Cmd + A**: Select all
-- **Ctrl/Cmd + Z/Y**: Undo/Redo
-
-### Context Menus
-**Node Menu:**
-- Configure
-- Duplicate
-- Insert before/after
-- Convert type
-- Delete
-
-**Edge Menu:**
-- Rename
-- Add waypoint
-- Insert node
-- Delete
-
-## 🚀 Usage
+## Usage
 
 ### Basic Setup
-```vue
-<template>
-  <CanvasShell
-    :theme="theme"
-    :show-minimap="true"
-    :node-count="nodes.length"
-    :edge-count="edges.length"
-    @node-drop="handleNodeDrop"
-  >
-    <NodeCard
-      v-for="node in nodes"
-      :key="node.id"
-      :id="node.id"
-      :data="node.data"
-      :selected="selectedNode === node.id"
-      @node-click="handleNodeClick"
-    />
-    
-    <Edge
-      v-for="edge in edges"
-      :key="edge.id"
-      :id="edge.id"
-      :source-x="edge.sourceX"
-      :source-y="edge.sourceY"
-      :target-x="edge.targetX"
-      :target-y="edge.targetY"
-      :data="edge.data"
-      @edge-click="handleEdgeClick"
-    />
-  </CanvasShell>
-</template>
-```
 
-### Node Data Structure
-```typescript
-const nodeData = {
-  label: 'Gmail Trigger',
-  type: 'trigger',
-  status: 'idle',
-  description: 'Triggers when new email arrives',
-  inputs: [],
-  outputs: [
-    {
-      id: 'email',
-      label: 'Email',
-      type: 'object',
-      required: false,
-      description: 'Email data object'
-    }
-  ]
+```tsx
+import { WorkflowCanvasWrapper } from '@/components/WorkflowCanvas'
+
+function App() {
+  return (
+    <WorkflowCanvasWrapper workflowId="my-workflow" />
+  )
 }
 ```
 
-### Edge Data Structure
-```typescript
-const edgeData = {
-  label: 'Email → Filter',
-  type: 'default',
-  condition: 'True',
-  errorMessage: null
+### Adding Nodes
+
+```tsx
+const { addNode } = useWorkflowStore()
+
+// Add a trigger node
+addNode('trigger', { x: 100, y: 100 })
+
+// Add an action node
+addNode('action', { x: 300, y: 100 })
+```
+
+### Validation
+
+```tsx
+const { validateGraph, issues } = useWorkflowStore()
+
+// Manual validation
+validateGraph()
+
+// Check issues for a specific node
+const nodeIssues = issues['node-id']
+```
+
+### Undo/Redo
+
+```tsx
+const { undo, redo } = useWorkflowStore()
+
+// Keyboard shortcuts: Ctrl+Z, Ctrl+Shift+Z
+// Or programmatically:
+undo()
+redo()
+```
+
+## Connection Rules
+
+1. **No self-loops**: Cannot connect a node to itself
+2. **No duplicates**: Cannot create identical connections
+3. **Type matching**: Source dtype must match target dtype (or target is 'any')
+4. **Capacity limits**: Non-multi ports can only have one connection
+
+## Node Types
+
+- **trigger**: No inputs, event output
+- **action**: Any input, json output
+- **condition**: Any input, true/false outputs
+- **transformer**: Any input, json output
+- **webhook**: Any input, json output
+
+## Development
+
+### Adding New Node Types
+
+1. Update `getDefaultPorts()` in `workflowStore.ts`
+2. Update `getDefaultParams()` in `workflowStore.ts`
+3. Add validation rules in `validation.ts`
+
+### Custom Validation
+
+```tsx
+// Add custom validation rules
+function customValidation(workflow: Workflow): ValidationIssues {
+  const issues: ValidationIssues = {}
+  
+  // Your validation logic here
+  
+  return issues
 }
 ```
 
-## 🎨 Styling
+### Mock API Extension
 
-### CSS Custom Properties
-All design tokens are available as CSS custom properties:
-
-```css
-.workflow-node {
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-md);
-  transition: all var(--transition-normal);
-}
-
-.workflow-handle {
-  width: var(--handle-size);
-  height: var(--handle-size);
-  border: var(--handle-border-width) solid var(--color-gray-300);
+```tsx
+// Add new endpoints in mocks/workflows.ts
+export const workflowAPI = {
+  // ... existing endpoints
+  
+  newEndpoint: async (id: string) => {
+    // Implementation
+  }
 }
 ```
 
-### Theme Support
-The components support light and dark themes:
+## Testing
 
-```vue
-<CanvasShell theme="dark" />
+Run the validation tests:
+
+```bash
+npm test src/utils/validation.test.ts
 ```
 
-### Custom Node Types
-Add custom node types by extending the color palette:
+## Keyboard Shortcuts
 
-```css
-.node-custom {
-  background: linear-gradient(135deg, #your-color, #your-color-dark);
-  border-color: #your-color;
-}
-```
+- `Delete` / `Backspace`: Remove selected node/edge
+- `Ctrl+Z`: Undo
+- `Ctrl+Shift+Z`: Redo
+- `Ctrl+S`: Save workflow
 
-## 🔧 Configuration
+## Future Enhancements
 
-### Grid Settings
-```css
-:root {
-  --grid-size: 8px;
-  --grid-major: 32px;
-  --grid-color: rgb(156 163 175 / 0.1);
-  --grid-major-color: rgb(156 163 175 / 0.2);
-}
-```
-
-### Animation Settings
-```css
-:root {
-  --transition-fast: 150ms ease;
-  --transition-normal: 200ms ease;
-  --transition-slow: 300ms ease;
-}
-```
-
-### Handle Settings
-```css
-:root {
-  --handle-size: 16px;
-  --handle-hit-area: 24px;
-  --handle-border-width: 2px;
-}
-```
-
-## ♿ Accessibility
-
-### ARIA Support
-- `role="application"` on canvas
-- `role="button"` on nodes and ports
-- `aria-label` for screen readers
-- `tabindex` for keyboard navigation
-
-### Keyboard Navigation
-- Tab to cycle through interactive elements
-- Enter to activate connections
-- Escape to cancel operations
-- Arrow keys for fine positioning
-
-### Visual Indicators
-- Focus rings on all interactive elements
-- High contrast colors for status states
-- Non-color cues for states (icons, patterns)
-
-## 🧪 Testing
-
-### Acceptance Criteria
-- Time-to-first-connection under 3 seconds
-- Mis-connection rate reduced via clear affordances
-- Edge labels readable at 50-200% zoom
-- Handles accessible via keyboard and screen reader
-
-### Performance
-- Smooth 60fps animations
-- Efficient rendering with virtual scrolling for large workflows
-- Optimized hit detection for ports and edges
-
-## 🔮 Future Enhancements
-
-### Planned Features
-- Multi-select with marquee selection
-- Undo/Redo system
-- Workflow templates
-- Advanced routing algorithms
-- Real-time collaboration
-- Workflow validation
-- Export to various formats
-
-### Integration Points
-- Backend API for workflow persistence
-- Real-time execution status updates
-- Integration with external services
-- Plugin system for custom node types
+- [ ] Edge context menu
+- [ ] Port tooltips
+- [ ] Node parameter editing
+- [ ] Workflow templates
+- [ ] Export/import functionality
+- [ ] Real backend integration

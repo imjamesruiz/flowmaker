@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import ReactFlow, {
   Node,
   Edge,
@@ -18,18 +18,20 @@ import ReactFlow, {
   OnNodesChange,
   OnEdgeUpdate,
   ValidConnection,
+  NodeTypes,
+  EdgeTypes,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
-import { useWorkflowStore } from '@/stores/useWorkflowStore'
-import { NodeCard } from './NodeCard'
-import { useToast } from '@/hooks/useToast'
+import { useWorkflowStore } from '@/store/workflowStore'
+import { workflowAPI } from '@/mocks/workflows'
+import { isValidConnection } from '@/utils/validation'
+import { EdgeModel } from '@/types/graph'
+import WorkflowNode from './WorkflowNode'
+import { nanoid } from 'nanoid'
 
-const nodeTypes = {
-  trigger: NodeCard,
-  action: NodeCard,
-  condition: NodeCard,
-  transformer: NodeCard,
-  webhook: NodeCard,
+// Node types
+const nodeTypes: NodeTypes = {
+  workflowNode: WorkflowNode,
 }
 
 interface WorkflowCanvasProps {
@@ -37,66 +39,148 @@ interface WorkflowCanvasProps {
 }
 
 export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ workflowId }) => {
-  const toast = useToast()
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
+  const [simulationPanel, setSimulationPanel] = useState(false)
+  const [simulationTrace, setSimulationTrace] = useState<any[]>([])
+  const [isSimulating, setIsSimulating] = useState(false)
+  
   const {
-    nodes,
-    edges,
-    loading,
-    error,
-    onNodesChange,
-    onEdgesChange,
-    onConnect,
-    onEdgeUpdate,
-    loadWorkflow,
-    saveWorkflow,
-    testWorkflow,
+    workflow,
+    issues,
+    selectedId,
     addNode,
-    deleteNode,
-    deleteEdge,
-    markDirty,
-    clearError,
+    updateNode,
+    removeNode,
+    addEdge,
+    removeEdge,
+    edgeExists,
+    validateGraph,
+    serialize,
+    load,
+    undo,
+    redo,
+    setSelectedId,
   } = useWorkflowStore()
 
   const { project } = useReactFlow()
 
+  // Convert workflow to React Flow format
+  const nodes: Node[] = workflow.nodes.map((node) => ({
+    id: node.id,
+    type: 'workflowNode',
+    position: { x: 0, y: 0 }, // Position will be set by React Flow
+    data: {
+      node,
+      issues: issues[node.id] || [],
+      isSelected: selectedId === node.id,
+    },
+  }))
+
+  const edges: Edge[] = workflow.edges.map((edge) => ({
+    id: edge.id,
+    source: edge.from.node,
+    sourceHandle: edge.from.port,
+    target: edge.to.node,
+    targetHandle: edge.to.port,
+    type: 'smoothstep',
+    animated: false,
+    style: { stroke: '#6C5CE7', strokeWidth: 2 },
+  }))
+
+  const [reactFlowNodes, setReactFlowNodes, onNodesChange] = useNodesState(nodes)
+  const [reactFlowEdges, setReactFlowEdges, onEdgesChange] = useEdgesState(edges)
+
+  // Sync React Flow state with our store
+  useEffect(() => {
+    setReactFlowNodes(nodes)
+  }, [nodes, setReactFlowNodes])
+
+  useEffect(() => {
+    setReactFlowEdges(edges)
+  }, [edges, setReactFlowEdges])
+
   // Load workflow on mount
   useEffect(() => {
-    loadWorkflow(workflowId)
-  }, [workflowId, loadWorkflow])
-
-  // Handle errors
-  useEffect(() => {
-    if (error) {
-      toast.error(error)
-      clearError()
-    }
-  }, [error, toast, clearError])
-
-  // Handle manual save
-  const handleSave = useCallback(async () => {
-    try {
-      await saveWorkflow(false)
-      toast.success('Workflow saved successfully')
-    } catch (error) {
-      toast.error('Failed to save workflow')
-    }
-  }, [saveWorkflow, toast])
-
-  // Handle test workflow
-  const handleTest = useCallback(async () => {
-    try {
-      const result = await testWorkflow()
-      if (result?.success) {
-        toast.success('Workflow test completed successfully')
-        console.log('Test results:', result)
-      } else {
-        toast.error(`Workflow test failed: ${result?.error}`)
+    const loadWorkflow = async () => {
+      try {
+        const response = await workflowAPI.getWorkflow(workflowId)
+        load(response.data)
+      } catch (error) {
+        console.error('Failed to load workflow:', error)
+        // Use default seeded workflow if loading fails
       }
-    } catch (error) {
-      toast.error('Failed to test workflow')
     }
-  }, [testWorkflow, toast])
+    loadWorkflow()
+  }, [workflowId, load])
+
+  // Handle connection
+  const onConnect: OnConnect = useCallback(
+    (connection) => {
+      if (!connection.source || !connection.target) return
+
+      const edge: EdgeModel = {
+        id: nanoid(),
+        from: {
+          node: connection.source,
+          port: connection.sourceHandle || 'out',
+        },
+        to: {
+          node: connection.target,
+          port: connection.targetHandle || 'in',
+        },
+      }
+
+      const success = addEdge(edge)
+      if (!success) {
+        // Show error toast or tooltip
+        console.warn('Invalid connection')
+      }
+    },
+    [addEdge]
+  )
+
+  // Handle edge updates
+  const onEdgeUpdate: OnEdgeUpdate = useCallback(
+    (oldEdge, newConnection) => {
+      if (!newConnection.source || !newConnection.target) return
+
+      // Remove old edge and add new one
+      removeEdge(oldEdge.id)
+      
+      const newEdge: EdgeModel = {
+        id: nanoid(),
+        from: {
+          node: newConnection.source,
+          port: newConnection.sourceHandle || 'out',
+        },
+        to: {
+          node: newConnection.target,
+          port: newConnection.targetHandle || 'in',
+        },
+      }
+
+      addEdge(newEdge)
+    },
+    [removeEdge, addEdge]
+  )
+
+  // Connection validation
+  const isValidConnectionHandler: ValidConnection = useCallback(
+    (connection) => {
+      if (!connection.source || !connection.target) return false
+      
+      return isValidConnection(
+        {
+          source: connection.source,
+          sourceHandle: connection.sourceHandle || 'out',
+          target: connection.target,
+          targetHandle: connection.targetHandle || 'in',
+        },
+        workflow
+      )
+    },
+    [workflow]
+  )
 
   // Handle drag and drop
   const onDragOver = useCallback((event: React.DragEvent) => {
@@ -124,129 +208,194 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ workflowId }) =>
     [project, addNode]
   )
 
-  // Handle node deletion
-  const onNodeDelete = useCallback((nodeId: string) => {
-    deleteNode(nodeId)
-  }, [deleteNode])
-
-  // Handle edge deletion
-  const onEdgeDelete = useCallback((edgeId: string) => {
-    deleteEdge(edgeId)
-  }, [deleteEdge])
-
-  // Connection validation
-  const isValidConnection: ValidConnection = useCallback(
-    ({ source, target, sourceHandle, targetHandle }) => {
-      if (!source || !target || source === target) {
-        toast.error('Cannot connect a node to itself')
-        return false
-      }
-
-      // Prevent duplicate identical edge
-      const existingEdge = edges.find(
-        (e) =>
-          e.source === source &&
-          e.target === target &&
-          e.sourceHandle === sourceHandle &&
-          e.targetHandle === targetHandle
-      )
-      if (existingEdge) {
-        toast.error('Connection already exists')
-        return false
-      }
-
-      // Enforce single input per 'in' handle
-      const existingInput = edges.find(
-        (e) => e.target === target && e.targetHandle === (targetHandle || 'in')
-      )
-      if (existingInput) {
-        toast.error('Target node already has an input connection')
-        return false
-      }
-
-      // Validate condition node connections
-      const targetNode = nodes.find(n => n.id === target)
-      if (targetNode?.type === 'condition') {
-        const validHandles = ['in']
-        if (targetHandle && !validHandles.includes(targetHandle)) {
-          toast.error('Invalid target handle for condition node')
-          return false
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (selectedId) {
+          // Check if it's an edge or node
+          const isEdge = workflow.edges.some(edge => edge.id === selectedId)
+          if (isEdge) {
+            removeEdge(selectedId)
+          } else {
+            removeNode(selectedId)
+          }
+          setSelectedId(undefined)
+        }
+      } else if (event.ctrlKey || event.metaKey) {
+        if (event.key === 'z') {
+          event.preventDefault()
+          if (event.shiftKey) {
+            redo()
+          } else {
+            undo()
+          }
+        } else if (event.key === 's') {
+          event.preventDefault()
+          handleSave()
         }
       }
+    }
 
-      // Validate source node connections
-      const sourceNode = nodes.find(n => n.id === source)
-      if (sourceNode?.type === 'condition') {
-        const validHandles = ['true', 'false']
-        if (sourceHandle && !validHandles.includes(sourceHandle)) {
-          toast.error('Invalid source handle for condition node')
-          return false
-        }
-      }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [selectedId, removeEdge, removeNode, setSelectedId, undo, redo, workflow.edges])
 
-      return true
-    },
-    [edges, nodes, toast]
-  )
+  // Handle save
+  const handleSave = useCallback(async () => {
+    try {
+      await workflowAPI.saveWorkflow(workflowId, workflow)
+      console.log('Workflow saved successfully')
+    } catch (error) {
+      console.error('Failed to save workflow:', error)
+    }
+  }, [workflowId, workflow])
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <span className="ml-2">Loading workflow...</span>
-      </div>
-    )
-  }
+  // Handle validate
+  const handleValidate = useCallback(async () => {
+    try {
+      const response = await workflowAPI.validateWorkflow(workflowId)
+      console.log('Validation issues:', response.data.issues)
+      // The store will automatically update with validation results
+    } catch (error) {
+      console.error('Failed to validate workflow:', error)
+    }
+  }, [workflowId])
+
+  // Handle simulate
+  const handleSimulate = useCallback(async () => {
+    setIsSimulating(true)
+    try {
+      const response = await workflowAPI.simulateWorkflow(workflowId)
+      setSimulationTrace(response.data.trace)
+      setSimulationPanel(true)
+    } catch (error) {
+      console.error('Failed to simulate workflow:', error)
+    } finally {
+      setIsSimulating(false)
+    }
+  }, [workflowId])
 
   return (
-    <div className="h-full w-full" ref={reactFlowWrapper}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onEdgeUpdate={onEdgeUpdate}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
-        nodeTypes={nodeTypes}
-        connectionMode={ConnectionMode.Loose}
-        isValidConnection={isValidConnection}
-        fitView
-        attributionPosition="bottom-left"
-        defaultEdgeOptions={{
-          type: 'smoothstep',
-          animated: false,
-          style: { stroke: '#6C5CE7', strokeWidth: 2 }
-        }}
-      >
-        <Controls />
-        <Background />
-        <MiniMap />
-        
-        <Panel position="top-left" className="bg-white p-4 rounded-lg shadow-lg">
-          <div className="flex gap-2">
-            <button
-              onClick={handleSave}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-            >
-              Save
-            </button>
-            <button
-              onClick={handleTest}
-              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
-            >
-              Test
-            </button>
-          </div>
-        </Panel>
+    <div className="h-full w-full flex">
+      <div className="flex-1" ref={reactFlowWrapper}>
+        <ReactFlow
+          nodes={reactFlowNodes}
+          edges={reactFlowEdges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onEdgeUpdate={onEdgeUpdate}
+          onDragOver={onDragOver}
+          onDrop={onDrop}
+          nodeTypes={nodeTypes}
+          connectionMode={ConnectionMode.Loose}
+          isValidConnection={isValidConnectionHandler}
+          onNodeClick={(_, node) => setSelectedId(node.id)}
+          onEdgeClick={(_, edge) => setSelectedId(edge.id)}
+          onPaneClick={() => setSelectedId(undefined)}
+          fitView
+          attributionPosition="bottom-left"
+          defaultEdgeOptions={{
+            type: 'smoothstep',
+            animated: false,
+            style: { stroke: '#6C5CE7', strokeWidth: 2 }
+          }}
+        >
+          <Controls />
+          <Background />
+          <MiniMap />
+          
+          {/* Top toolbar */}
+          <Panel position="top-left" className="bg-white p-4 rounded-lg shadow-lg">
+            <div className="flex gap-2">
+              <button
+                onClick={handleSave}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+              >
+                Save
+              </button>
+              <button
+                onClick={handleValidate}
+                className="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 transition-colors"
+              >
+                Validate
+              </button>
+              <button
+                onClick={handleSimulate}
+                disabled={isSimulating}
+                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors disabled:opacity-50"
+              >
+                {isSimulating ? 'Simulating...' : 'Simulate'}
+              </button>
+            </div>
+          </Panel>
 
-        <Panel position="top-right" className="bg-white p-4 rounded-lg shadow-lg">
-          <div className="text-sm text-gray-600">
-            Drag nodes from the palette to create connections
+          {/* Undo/Redo panel */}
+          <Panel position="top-right" className="bg-white p-4 rounded-lg shadow-lg">
+            <div className="flex gap-2">
+              <button
+                onClick={undo}
+                className="px-3 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+              >
+                Undo
+              </button>
+              <button
+                onClick={redo}
+                className="px-3 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+              >
+                Redo
+              </button>
+            </div>
+          </Panel>
+
+          {/* Instructions panel */}
+          <Panel position="bottom-left" className="bg-white p-4 rounded-lg shadow-lg">
+            <div className="text-sm text-gray-600">
+              <p>• Drag nodes from palette to create connections</p>
+              <p>• Delete/Backspace removes selected items</p>
+              <p>• Ctrl+Z/Ctrl+Shift+Z for undo/redo</p>
+            </div>
+          </Panel>
+        </ReactFlow>
+      </div>
+
+      {/* Simulation panel */}
+      {simulationPanel && (
+        <div className="w-80 bg-white border-l border-gray-200 p-4 overflow-y-auto">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold">Simulation Results</h3>
+            <button
+              onClick={() => setSimulationPanel(false)}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              ✕
+            </button>
           </div>
-        </Panel>
-      </ReactFlow>
+          
+          <div className="space-y-3">
+            {simulationTrace.map((step, index) => (
+              <div key={index} className="border border-gray-200 rounded p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-medium text-sm">{step.node_name}</span>
+                  <span className={`text-xs px-2 py-1 rounded ${
+                    step.status === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                  }`}>
+                    {step.status}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-600">
+                  <p>Type: {step.node_type}</p>
+                  <p>Duration: {step.execution_time.toFixed(0)}ms</p>
+                  {step.error && (
+                    <p className="text-red-600">Error: {step.error}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
