@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from app.config import settings
 from app.database import init_db
-from app.routers import auth, workflows, integrations, executions, oauth
+from app.routers import auth, workflows, integrations, executions, oauth, password_reset
 
 # Create FastAPI app
 app = FastAPI(
@@ -36,6 +36,7 @@ app.include_router(workflows.router, prefix=settings.API_V1_STR, tags=["workflow
 app.include_router(integrations.router, prefix=settings.API_V1_STR, tags=["integrations"])
 app.include_router(executions.router, prefix=settings.API_V1_STR, tags=["executions"])
 app.include_router(oauth.router, prefix=settings.API_V1_STR, tags=["oauth"])
+app.include_router(password_reset.router, prefix=f"{settings.API_V1_STR}/password-reset", tags=["password-reset"])
 
 
 @app.on_event("startup")

@@ -10,6 +10,15 @@ const api = axios.create({
   },
 })
 
+// Create a separate axios instance for refresh token requests (no interceptors)
+const refreshApi = axios.create({
+  baseURL: 'http://localhost:8000/api/v1',
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
 // Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
@@ -33,12 +42,12 @@ api.interceptors.response.use(
     const originalRequest = error.config
     const authStore = useAuthStore()
 
-    // Handle 401 errors (unauthorized)
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Handle 401 errors (unauthorized) but skip refresh token requests to prevent infinite loops
+    if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.url?.includes('/auth/refresh')) {
       originalRequest._retry = true
 
       try {
-        // Try to refresh token
+        // Try to refresh token using the separate instance
         await authStore.refreshToken()
         
         // Retry original request with new token
@@ -61,7 +70,21 @@ export const authAPI = {
   login: (credentials) => api.post('/auth/login', credentials),
   register: (userData) => api.post('/auth/register', userData),
   getProfile: () => api.get('/auth/me'),
-  refreshToken: () => api.post('/auth/refresh'),
+  refreshToken: () => {
+    const authStore = useAuthStore()
+    const headers = {}
+    if (authStore.token) {
+      headers.Authorization = `Bearer ${authStore.token}`
+    }
+    return refreshApi.post('/auth/refresh', {}, { headers })
+  },
+}
+
+export const passwordResetAPI = {
+  requestReset: (email) => api.post('/password-reset/request', { email }),
+  verifyCode: (email, verification_code) => api.post('/password-reset/verify', { email, verification_code }),
+  confirmReset: (email, verification_code, new_password, confirm_password) => 
+    api.post('/password-reset/confirm', { email, verification_code, new_password, confirm_password }),
 }
 
 export const workflowAPI = {

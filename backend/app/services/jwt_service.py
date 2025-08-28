@@ -12,7 +12,7 @@ class JWTService:
     """Service for managing JWT tokens in the database"""
     
     @staticmethod
-    def create_token(user: User, expires_delta: Optional[timedelta] = None) -> str:
+    def create_token(user: User, expires_delta: Optional[timedelta] = None) -> tuple[str, datetime]:
         """Create a new JWT token and store it in the database"""
         if expires_delta is None:
             expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)

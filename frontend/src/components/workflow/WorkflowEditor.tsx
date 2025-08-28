@@ -15,6 +15,8 @@ import ReactFlow, {
   ConnectionMode,
   NodeTypes,
   EdgeTypes,
+  ConnectionLineType,
+  MarkerType,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { cn } from '@/lib/utils';
@@ -50,6 +52,10 @@ import {
   Zap,
   Code,
   AlertCircle,
+  Trash2,
+  Copy,
+  Download,
+  Upload,
 } from 'lucide-react';
 
 import { WorkflowNode } from './Node';
@@ -64,7 +70,7 @@ const edgeTypes: EdgeTypes = {
   smartEdge: SmartEdge,
 };
 
-// Sample node data
+// Sample node data with proper data flow structure
 const initialNodes: Node[] = [
   {
     id: '1',
@@ -74,10 +80,18 @@ const initialNodes: Node[] = [
       label: 'Gmail Trigger',
       type: 'trigger',
       status: 'idle',
+      integration: 'gmail',
+      config: {
+        trigger_type: 'new_email',
+        label: 'INBOX',
+        from_address: '',
+        subject_contains: ''
+      },
       inputs: [],
       outputs: [
         { id: 'email', label: 'Email', type: 'object', required: false },
         { id: 'subject', label: 'Subject', type: 'string', required: false },
+        { id: 'from', label: 'From', type: 'string', required: false },
       ],
     },
   },
@@ -89,8 +103,15 @@ const initialNodes: Node[] = [
       label: 'Filter Emails',
       type: 'condition',
       status: 'idle',
+      config: {
+        condition_type: 'simple',
+        field: 'subject',
+        operator: 'contains',
+        value: 'urgent'
+      },
       inputs: [
         { id: 'email', label: 'Email', type: 'object', required: true },
+        { id: 'subject', label: 'Subject', type: 'string', required: false },
       ],
       outputs: [
         { id: 'true', label: 'True', type: 'object', required: false },
@@ -98,373 +119,558 @@ const initialNodes: Node[] = [
       ],
     },
   },
+  {
+    id: '3',
+    type: 'workflowNode',
+    position: { x: 700, y: 50 },
+    data: {
+      label: 'Send Slack Alert',
+      type: 'action',
+      status: 'idle',
+      integration: 'slack',
+      config: {
+        action_type: 'send_message',
+        channel: '#alerts',
+        text: 'Urgent email received: {{subject}}',
+        integration_provider: 'slack'
+      },
+      inputs: [
+        { id: 'email', label: 'Email', type: 'object', required: true },
+        { id: 'subject', label: 'Subject', type: 'string', required: false },
+      ],
+      outputs: [
+        { id: 'message_id', label: 'Message ID', type: 'string', required: false },
+        { id: 'channel', label: 'Channel', type: 'string', required: false },
+      ],
+    },
+  },
+  {
+    id: '4',
+    type: 'workflowNode',
+    position: { x: 700, y: 150 },
+    data: {
+      label: 'Send Email Response',
+      type: 'action',
+      status: 'idle',
+      integration: 'gmail',
+      config: {
+        action_type: 'send_email',
+        to: '{{from}}',
+        subject: 'Re: {{subject}}',
+        body: 'Thank you for your email. We will get back to you soon.',
+        integration_provider: 'gmail'
+      },
+      inputs: [
+        { id: 'email', label: 'Email', type: 'object', required: true },
+        { id: 'from', label: 'From', type: 'string', required: false },
+        { id: 'subject', label: 'Subject', type: 'string', required: false },
+      ],
+      outputs: [
+        { id: 'message_id', label: 'Message ID', type: 'string', required: false },
+        { id: 'thread_id', label: 'Thread ID', type: 'string', required: false },
+      ],
+    },
+  },
 ];
 
-const initialEdges: Edge[] = [];
+const initialEdges: Edge[] = [
+  {
+    id: 'e1-2',
+    source: '1',
+    target: '2',
+    sourceHandle: 'email',
+    targetHandle: 'email',
+    type: 'smartEdge',
+    data: {
+      label: 'Email Data',
+      dataMapping: {
+        'email': 'email',
+        'subject': 'subject'
+      }
+    },
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      width: 20,
+      height: 20,
+      color: '#2563eb',
+    },
+    style: {
+      strokeWidth: 2,
+      stroke: '#2563eb',
+    },
+  },
+  {
+    id: 'e2-3',
+    source: '2',
+    target: '3',
+    sourceHandle: 'true',
+    targetHandle: 'email',
+    type: 'smartEdge',
+    data: {
+      label: 'Urgent Email',
+      condition: 'true'
+    },
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      width: 20,
+      height: 20,
+      color: '#dc2626',
+    },
+    style: {
+      strokeWidth: 2,
+      stroke: '#dc2626',
+    },
+  },
+  {
+    id: 'e2-4',
+    source: '2',
+    target: '4',
+    sourceHandle: 'false',
+    targetHandle: 'email',
+    type: 'smartEdge',
+    data: {
+      label: 'Regular Email',
+      condition: 'false'
+    },
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      width: 20,
+      height: 20,
+      color: '#059669',
+    },
+    style: {
+      strokeWidth: 2,
+      stroke: '#059669',
+    },
+  },
+];
 
 interface WorkflowEditorProps {
   workflowId?: string;
-  onSave?: (nodes: Node[], edges: Edge[]) => void;
-  onRun?: () => void;
+  onSave?: (workflow: any) => void;
+  onExecute?: (workflow: any) => void;
+  readOnly?: boolean;
 }
 
-export const WorkflowEditor: React.FC<WorkflowEditorProps> = ({
-  workflowId,
-  onSave,
-  onRun,
-}) => {
+export function WorkflowEditor({ 
+  workflowId, 
+  onSave, 
+  onExecute, 
+  readOnly = false 
+}: WorkflowEditorProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [connectionStart, setConnectionStart] = useState<{ nodeId: string; handleId: string } | null>(null);
-  const [isPanning, setIsPanning] = useState(false);
-  const [zoom, setZoom] = useState(1);
-  const [selectedNodes, setSelectedNodes] = useState<string[]>([]);
-  const [selectedEdges, setSelectedEdges] = useState<string[]>([]);
-  const [isRunning, setIsRunning] = useState(false);
-  const [insertTarget, setInsertTarget] = useState<{ edgeId: string; position: { x: number; y: number } } | null>(null);
-
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null);
+  const [workflowName, setWorkflowName] = useState('Email Processing Workflow');
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executionStatus, setExecutionStatus] = useState<'idle' | 'running' | 'completed' | 'error'>('idle');
+  
   const reactFlowInstance = useReactFlow();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
-  // Auto-pan when dragging near edges
-  useEffect(() => {
-    const handleMouseMove = (event: MouseEvent) => {
-      if (!reactFlowWrapper.current || !isConnecting) return;
-
-      const rect = reactFlowWrapper.current.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      const { width, height } = rect;
-
-      const panThreshold = 100;
-      const panSpeed = 10;
-
-      if (x < panThreshold) {
-        reactFlowInstance.panBy({ x: -panSpeed, y: 0 });
-      } else if (x > width - panThreshold) {
-        reactFlowInstance.panBy({ x: panSpeed, y: 0 });
-      }
-
-      if (y < panThreshold) {
-        reactFlowInstance.panBy({ x: 0, y: -panSpeed });
-      } else if (y > height - panThreshold) {
-        reactFlowInstance.panBy({ x: 0, y: panSpeed });
-      }
-    };
-
-    if (isConnecting) {
-      document.addEventListener('mousemove', handleMouseMove);
-    }
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-    };
-  }, [isConnecting, reactFlowInstance]);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
-        return;
-      }
-
-      switch (event.key) {
-        case 'Delete':
-        case 'Backspace':
-          // Delete selected nodes/edges
-          break;
-        case 'Escape':
-          setIsConnecting(false);
-          setConnectionStart(null);
-          break;
-        case ' ':
-          event.preventDefault();
-          setIsPanning(!isPanning);
-          break;
-        case 'z':
-          if (event.ctrlKey || event.metaKey) {
-            event.preventDefault();
-            // Undo
-          }
-          break;
-        case 'y':
-          if (event.ctrlKey || event.metaKey) {
-            event.preventDefault();
-            // Redo
-          }
-          break;
-        case 's':
-          if (event.ctrlKey || event.metaKey) {
-            event.preventDefault();
-            onSave?.(nodes, edges);
-          }
-          break;
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isPanning, nodes, edges, onSave]);
-
-  // Connection handling
-  const onConnectStart = useCallback((event: any, { nodeId, handleId }: any) => {
-    setIsConnecting(true);
-    setConnectionStart({ nodeId, handleId });
+  // Handle node selection
+  const onNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
+    setSelectedNode(node);
   }, []);
 
-  const onConnectEnd = useCallback((event: any) => {
-    setIsConnecting(false);
-    setConnectionStart(null);
-  }, []);
-
+  // Handle edge connections
   const onConnect = useCallback((params: Connection) => {
     // Validate connection
     const sourceNode = nodes.find(n => n.id === params.source);
     const targetNode = nodes.find(n => n.id === params.target);
     
     if (sourceNode && targetNode) {
-      const sourceOutput = sourceNode.data.outputs?.find(o => o.id === params.sourceHandle);
-      const targetInput = targetNode.data.inputs?.find(i => i.id === params.targetHandle);
+      // Check if output and input types are compatible
+      const sourceOutput = sourceNode.data.outputs?.find((o: any) => o.id === params.sourceHandle);
+      const targetInput = targetNode.data.inputs?.find((i: any) => i.id === params.targetHandle);
       
-      // Check type compatibility
-      const isValid = sourceOutput && targetInput && sourceOutput.type === targetInput.type;
-      
-      const newEdge: Edge = {
-        ...params,
-        id: `e${params.source}-${params.target}`,
-        type: 'smartEdge',
-        data: {
-          label: `${sourceOutput?.label} → ${targetInput?.label}`,
-          type: isValid ? 'default' : 'error',
-          errorMessage: isValid ? undefined : `Cannot connect ${sourceOutput?.type} to ${targetInput?.type}`,
-        },
-      };
-      
-      setEdges((eds) => addEdge(newEdge, eds));
+      if (sourceOutput && targetInput) {
+        // Add the connection
+        const newEdge: Edge = {
+          id: `e${params.source}-${params.target}`,
+          source: params.source!,
+          target: params.target!,
+          sourceHandle: params.sourceHandle!,
+          targetHandle: params.targetHandle!,
+          type: 'smartEdge',
+          data: {
+            label: `${sourceOutput.label} → ${targetInput.label}`,
+            dataMapping: {
+              [sourceOutput.id]: targetInput.id
+            }
+          },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            width: 20,
+            height: 20,
+            color: '#2563eb',
+          },
+          style: {
+            strokeWidth: 2,
+            stroke: '#2563eb',
+          },
+        };
+        
+        setEdges((eds) => addEdge(newEdge, eds));
+      }
     }
   }, [nodes, setEdges]);
 
-  // Insert node on edge
-  const handleInsertOnEdge = useCallback((edgeId: string, nodeType: string) => {
-    const edge = edges.find(e => e.id === edgeId);
-    if (!edge) return;
+  // Handle edge deletion
+  const onEdgeDelete = useCallback((edge: Edge) => {
+    setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+  }, [setEdges]);
 
-    const sourceNode = nodes.find(n => n.id === edge.source);
-    const targetNode = nodes.find(n => n.id === edge.target);
-    
-    if (!sourceNode || !targetNode) return;
-
-    // Create new node at midpoint
-    const midX = (sourceNode.position.x + targetNode.position.x) / 2;
-    const midY = (sourceNode.position.y + targetNode.position.y) / 2;
-
-    const newNodeId = `node-${Date.now()}`;
+  // Add new node
+  const addNode = useCallback((nodeType: string, integration?: string) => {
     const newNode: Node = {
-      id: newNodeId,
+      id: `node-${Date.now()}`,
       type: 'workflowNode',
-      position: { x: midX, y: midY },
+      position: { x: 200, y: 200 },
       data: {
         label: `New ${nodeType}`,
-        type: nodeType as any,
+        type: nodeType,
         status: 'idle',
-        inputs: [{ id: 'input', label: 'Input', type: 'object', required: true }],
-        outputs: [{ id: 'output', label: 'Output', type: 'object', required: false }],
+        integration,
+        config: {},
+        inputs: [],
+        outputs: [],
       },
     };
+    
+    setNodes((nds) => [...nds, newNode]);
+  }, [setNodes]);
 
-    // Update edges
-    const newEdges = edges.filter(e => e.id !== edgeId);
-    newEdges.push(
-      {
-        ...edge,
-        id: `${edge.source}-${newNodeId}`,
-        target: newNodeId,
-        targetHandle: 'input',
-      },
-      {
-        ...edge,
-        id: `${newNodeId}-${edge.target}`,
-        source: newNodeId,
-        sourceHandle: 'output',
+  // Save workflow
+  const saveWorkflow = useCallback(async () => {
+    if (!workflowId) return;
+    
+    const workflowData = {
+      id: workflowId,
+      name: workflowName,
+      nodes: nodes.map(node => ({
+        id: node.id,
+        type: node.data.type,
+        name: node.data.label,
+        position: node.position,
+        config: node.data.config,
+        integration: node.data.integration,
+        inputs: node.data.inputs,
+        outputs: node.data.outputs,
+      })),
+      edges: edges.map(edge => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        sourceHandle: edge.sourceHandle,
+        targetHandle: edge.targetHandle,
+        data: edge.data,
+      })),
+    };
+    
+    if (onSave) {
+      onSave(workflowData);
+    }
+  }, [workflowId, workflowName, nodes, edges, onSave]);
+
+  // Execute workflow
+  const executeWorkflow = useCallback(async () => {
+    if (!workflowId) return;
+    
+    setIsExecuting(true);
+    setExecutionStatus('running');
+    
+    try {
+      const workflowData = {
+        id: workflowId,
+        nodes: nodes.map(node => ({
+          id: node.id,
+          type: node.data.type,
+          config: node.data.config,
+        })),
+        edges: edges.map(edge => ({
+          source: edge.source,
+          target: edge.target,
+          sourceHandle: edge.sourceHandle,
+          targetHandle: edge.targetHandle,
+        })),
+      };
+      
+      if (onExecute) {
+        await onExecute(workflowData);
       }
-    );
+      
+      setExecutionStatus('completed');
+    } catch (error) {
+      console.error('Workflow execution failed:', error);
+      setExecutionStatus('error');
+    } finally {
+      setIsExecuting(false);
+    }
+  }, [workflowId, nodes, edges, onExecute]);
 
-    setNodes(nds => [...nds, newNode]);
-    setEdges(newEdges);
-    setInsertTarget(null);
-  }, [nodes, edges, setNodes, setEdges]);
+  // Zoom controls
+  const onZoomIn = useCallback(() => {
+    reactFlowInstance.zoomIn();
+  }, [reactFlowInstance]);
 
-  // Node selection
-  const onNodeClick = useCallback((event: any, node: Node) => {
-    setSelectedNodes(prev => 
-      event.ctrlKey || event.metaKey
-        ? prev.includes(node.id) 
-          ? prev.filter(id => id !== node.id)
-          : [...prev, node.id]
-        : [node.id]
-    );
-  }, []);
+  const onZoomOut = useCallback(() => {
+    reactFlowInstance.zoomOut();
+  }, [reactFlowInstance]);
 
-  const onEdgeClick = useCallback((event: any, edge: Edge) => {
-    setSelectedEdges(prev => 
-      event.ctrlKey || event.metaKey
-        ? prev.includes(edge.id) 
-          ? prev.filter(id => id !== edge.id)
-          : [...prev, edge.id]
-        : [edge.id]
-    );
-  }, []);
+  const onFitView = useCallback(() => {
+    reactFlowInstance.fitView();
+  }, [reactFlowInstance]);
 
-  // Canvas click
-  const onPaneClick = useCallback(() => {
-    setSelectedNodes([]);
-    setSelectedEdges([]);
-  }, []);
+  // Delete selected node
+  const deleteSelectedNode = useCallback(() => {
+    if (selectedNode) {
+      setNodes((nds) => nds.filter((node) => node.id !== selectedNode.id));
+      setEdges((eds) => eds.filter((edge) => edge.source !== selectedNode.id && edge.target !== selectedNode.id));
+      setSelectedNode(null);
+    }
+  }, [selectedNode, setNodes, setEdges]);
 
   return (
-    <div className="h-full w-full relative">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        onConnectStart={onConnectStart}
-        onConnectEnd={onConnectEnd}
-        onNodeClick={onNodeClick}
-        onEdgeClick={onEdgeClick}
-        onPaneClick={onPaneClick}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        connectionMode={ConnectionMode.Loose}
-        snapToGrid={true}
-        snapGrid={[15, 15]}
-        fitView
-        className={cn(
-          'bg-gray-50',
-          isPanning && 'cursor-grab active:cursor-grabbing'
-        )}
-      >
-        <Background />
-        <Controls />
-        <MiniMap />
-        
-        {/* Top Toolbar */}
-        <Panel position="top-left" className="flex items-center gap-2 p-2 bg-white border border-gray-200 rounded-lg shadow-lg">
-          <Button
-            size="sm"
-            variant={isRunning ? "destructive" : "default"}
-            onClick={() => {
-              setIsRunning(!isRunning);
-              onRun?.();
-            }}
-          >
-            {isRunning ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-            {isRunning ? 'Stop' : 'Run'}
-          </Button>
+    <div className="h-full w-full flex flex-col">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between p-4 border-b bg-white">
+        <div className="flex items-center space-x-4">
+          <Input
+            value={workflowName}
+            onChange={(e) => setWorkflowName(e.target.value)}
+            className="w-64"
+            placeholder="Workflow name"
+          />
           
-          <Button size="sm" variant="outline" onClick={() => onSave?.(nodes, edges)}>
-            <Save className="w-4 h-4" />
-            Save
-          </Button>
-          
-          <div className="w-px h-6 bg-gray-300" />
-          
-          <Button size="sm" variant="outline">
-            <Undo className="w-4 h-4" />
-          </Button>
-          <Button size="sm" variant="outline">
-            <Redo className="w-4 h-4" />
-          </Button>
-          
-          <div className="w-px h-6 bg-gray-300" />
-          
-          <Button size="sm" variant="outline">
-            <ZoomIn className="w-4 h-4" />
-          </Button>
-          <Button size="sm" variant="outline">
-            <ZoomOut className="w-4 h-4" />
-          </Button>
-          <Button size="sm" variant="outline">
-            <RotateCcw className="w-4 h-4" />
-          </Button>
-        </Panel>
-
-        {/* Bottom Status Bar */}
-        <Panel position="bottom-left" className="flex items-center gap-4 p-2 bg-white border border-gray-200 rounded-lg shadow-lg">
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <span>{nodes.length} nodes</span>
-            <span>•</span>
-            <span>{edges.length} connections</span>
-            <span>•</span>
-            <span>Zoom: {Math.round(zoom * 100)}%</span>
+          <div className="flex items-center space-x-2">
+            <Button
+              onClick={saveWorkflow}
+              disabled={readOnly}
+              size="sm"
+            >
+              <Save className="w-4 h-4 mr-2" />
+              Save
+            </Button>
+            
+            <Button
+              onClick={executeWorkflow}
+              disabled={isExecuting || readOnly}
+              size="sm"
+              variant={executionStatus === 'running' ? 'secondary' : 'default'}
+            >
+              {isExecuting ? (
+                <>
+                  <Pause className="w-4 h-4 mr-2" />
+                  Running...
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4 mr-2" />
+                  Execute
+                </>
+              )}
+            </Button>
           </div>
           
-          {isConnecting && (
-            <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-              Connecting...
+          {executionStatus === 'completed' && (
+            <Badge variant="default" className="bg-green-100 text-green-800">
+              Completed
             </Badge>
           )}
           
-          {isPanning && (
-            <Badge variant="secondary" className="bg-gray-100 text-gray-700">
-              Pan Mode
+          {executionStatus === 'error' && (
+            <Badge variant="destructive">
+              <AlertCircle className="w-3 h-3 mr-1" />
+              Error
             </Badge>
           )}
-        </Panel>
-
-        {/* Insert-on-Edge Toolbar */}
-        {insertTarget && (
-          <Panel
-            position="top"
-            style={{
-              left: insertTarget.position.x,
-              top: insertTarget.position.y,
-              transform: 'translate(-50%, -100%)',
-            }}
-            className="bg-white border border-gray-200 rounded-lg shadow-lg p-2"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium">Insert:</span>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleInsertOnEdge(insertTarget.edgeId, 'action')}
-              >
-                <Zap className="w-3 h-3 mr-1" />
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Node
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onClick={() => addNode('trigger')}>
+                <Zap className="w-4 h-4 mr-2" />
+                Trigger
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => addNode('action')}>
+                <Code className="w-4 h-4 mr-2" />
                 Action
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleInsertOnEdge(insertTarget.edgeId, 'condition')}
-              >
-                <GitBranch className="w-3 h-3 mr-1" />
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => addNode('condition')}>
+                <GitBranch className="w-4 h-4 mr-2" />
                 Condition
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleInsertOnEdge(insertTarget.edgeId, 'transform')}
-              >
-                <Code className="w-3 h-3 mr-1" />
-                Transform
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setInsertTarget(null)}
-              >
-                ✕
-              </Button>
-            </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => addNode('transformer')}>
+                <Settings className="w-4 h-4 mr-2" />
+                Transformer
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          
+          <Button
+            onClick={deleteSelectedNode}
+            disabled={!selectedNode || readOnly}
+            size="sm"
+            variant="outline"
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+      
+      {/* Canvas */}
+      <div className="flex-1 relative" ref={reactFlowWrapper}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onNodeClick={onNodeClick}
+          onEdgeClick={(event, edge) => onEdgeDelete(edge)}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          connectionMode={ConnectionMode.Loose}
+          connectionLineType={ConnectionLineType.Bezier}
+          snapToGrid={true}
+          snapGrid={[15, 15]}
+          fitView
+          attributionPosition="bottom-left"
+        >
+          <Controls />
+          <Background color="#aaa" gap={16} />
+          <MiniMap
+            nodeStrokeColor={(n) => {
+              if (n.type === 'input') return '#0041d0';
+              if (n.type === 'output') return '#ff0072';
+              return '#1a192b';
+            }}
+            nodeColor={(n) => {
+              if (n.data?.status === 'running') return '#fbbf24';
+              if (n.data?.status === 'completed') return '#10b981';
+              if (n.data?.status === 'error') return '#ef4444';
+              return '#fff';
+            }}
+            nodeBorderRadius={2}
+          />
+          
+          <Panel position="top-right" className="space-y-2">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={onZoomIn}
+                    size="sm"
+                    variant="outline"
+                    className="w-8 h-8 p-0"
+                  >
+                    <ZoomIn className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Zoom In</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={onZoomOut}
+                    size="sm"
+                    variant="outline"
+                    className="w-8 h-8 p-0"
+                  >
+                    <ZoomOut className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Zoom Out</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={onFitView}
+                    size="sm"
+                    variant="outline"
+                    className="w-8 h-8 p-0"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Fit View</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </Panel>
-        )}
-      </ReactFlow>
+        </ReactFlow>
+      </div>
+      
+      {/* Properties Panel */}
+      {selectedNode && (
+        <div className="w-80 border-l bg-white p-4">
+          <h3 className="font-semibold mb-4">Node Properties</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Name</label>
+              <Input
+                value={selectedNode.data.label}
+                onChange={(e) => {
+                  setNodes((nds) =>
+                    nds.map((node) =>
+                      node.id === selectedNode.id
+                        ? { ...node, data: { ...node.data, label: e.target.value } }
+                        : node
+                    )
+                  );
+                }}
+                className="mt-1"
+              />
+            </div>
+            
+            <div>
+              <label className="text-sm font-medium">Type</label>
+              <Badge variant="outline" className="mt-1">
+                {selectedNode.data.type}
+              </Badge>
+            </div>
+            
+            {selectedNode.data.integration && (
+              <div>
+                <label className="text-sm font-medium">Integration</label>
+                <Badge variant="secondary" className="mt-1">
+                  {selectedNode.data.integration}
+                </Badge>
+              </div>
+            )}
+            
+            <div>
+              <label className="text-sm font-medium">Status</label>
+              <Badge 
+                variant={
+                  selectedNode.data.status === 'completed' ? 'default' :
+                  selectedNode.data.status === 'error' ? 'destructive' :
+                  selectedNode.data.status === 'running' ? 'secondary' : 'outline'
+                }
+                className="mt-1"
+              >
+                {selectedNode.data.status}
+              </Badge>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-};
+}
 
 // Wrapper component for ReactFlowProvider
 export const WorkflowEditorWrapper: React.FC<WorkflowEditorProps> = (props) => {

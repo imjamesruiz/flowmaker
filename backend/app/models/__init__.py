@@ -3,6 +3,7 @@ from .workflow import Workflow, WorkflowNode, WorkflowConnection
 from .integration import Integration, OAuthToken
 from .execution import WorkflowExecution, ExecutionLog
 from .jwt_token import JWTToken
+from .password_reset import PasswordResetToken
 
 __all__ = [
     "User",
@@ -13,5 +14,6 @@ __all__ = [
     "OAuthToken",
     "WorkflowExecution",
     "ExecutionLog",
-    "JWTToken"
+    "JWTToken",
+    "PasswordResetToken"
 ] 

@@ -6,6 +6,7 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref(null)
   const token = ref(localStorage.getItem('token'))
   const loading = ref(false)
+  const isRefreshing = ref(false)
 
   const isAuthenticated = computed(() => !!token.value)
 
@@ -31,6 +32,19 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true
     try {
       const response = await authAPI.register(userData)
+      // After successful registration, automatically log the user in
+      if (response.data) {
+        // Try to login with the same credentials
+        try {
+          await login({
+            email: userData.email,
+            password: userData.password
+          })
+        } catch (loginError) {
+          // If auto-login fails, just return the registration response
+          console.warn('Auto-login after registration failed:', loginError)
+        }
+      }
       return response.data
     } catch (error) {
       throw error
@@ -64,9 +78,23 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   const refreshToken = async () => {
-    if (!token.value) return
+    if (!token.value) {
+      throw new Error('No token available to refresh')
+    }
+    
+    // Prevent multiple simultaneous refresh attempts
+    if (isRefreshing.value) {
+      // Wait for the current refresh to complete
+      while (isRefreshing.value) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      return token.value
+    }
+    
+    isRefreshing.value = true
     
     try {
+      // Use the refreshApi instance directly with the current token
       const response = await authAPI.refreshToken()
       const { access_token } = response.data
       
@@ -75,8 +103,11 @@ export const useAuthStore = defineStore('auth', () => {
       
       return access_token
     } catch (error) {
+      // If refresh fails, clear the token and logout
       await logout()
       throw error
+    } finally {
+      isRefreshing.value = false
     }
   }
 

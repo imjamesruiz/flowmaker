@@ -938,12 +938,36 @@ const performSave = async () => {
       }
     } else {
       // Update existing workflow
-      await workflowsStore.updateWorkflowBulk(workflow.id, {
+      // Convert to the format expected by the backend
+      const nodes = workflow.nodes.map(node => ({
+        id: node.node_id,
+        type: node.node_type,
+        position: { x: node.position_x, y: node.position_y },
+        data: {
+          name: node.name,
+          config: node.config || {}
+        }
+      }))
+      
+      const edges = workflow.connections.map(connection => ({
+        id: connection.id,
+        source: connection.source_node_id,
+        target: connection.target_node_id,
+        sourceHandle: connection.source_port,
+        targetHandle: connection.target_port,
+        label: connection.condition ? 'Condition' : undefined
+      }))
+      
+      const bulkData = {
         name: workflow.name,
         description: workflow.description,
-        nodes: workflow.nodes,
-        connections: workflow.connections
-      })
+        nodes: nodes,
+        edges: edges
+      }
+      
+      console.log('Sending bulk update data:', JSON.stringify(bulkData, null, 2))
+      
+      await workflowsStore.updateWorkflowBulk(workflow.id, bulkData)
     }
     
     toast.success('Workflow saved successfully')

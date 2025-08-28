@@ -18,8 +18,8 @@
             <label for="full-name" class="sr-only">Full Name</label>
             <input
               id="full-name"
-              v-model="form.fullName"
-              name="fullName"
+              v-model="form.full_name"
+              name="full_name"
               type="text"
               required
               class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
@@ -56,8 +56,8 @@
             <label for="confirm-password" class="sr-only">Confirm Password</label>
             <input
               id="confirm-password"
-              v-model="form.confirmPassword"
-              name="confirmPassword"
+              v-model="form.confirm_password"
+              name="confirm_password"
               type="password"
               autocomplete="new-password"
               required
@@ -105,14 +105,14 @@ const loading = ref(false)
 const error = ref('')
 
 const form = reactive({
-  fullName: '',
+  full_name: '',
   email: '',
   password: '',
-  confirmPassword: ''
+  confirm_password: ''
 })
 
 const handleRegister = async () => {
-  if (form.password !== form.confirmPassword) {
+  if (form.password !== form.confirm_password) {
     error.value = 'Passwords do not match'
     return
   }
@@ -127,10 +127,10 @@ const handleRegister = async () => {
 
   try {
     await authStore.register({
-      full_name: form.fullName,
+      full_name: form.full_name,
       email: form.email,
       password: form.password,
-      confirm_password: form.confirmPassword
+      confirm_password: form.confirm_password
     })
     
     toast.success('Account created successfully!')

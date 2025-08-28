@@ -1,16 +1,18 @@
 import uuid
 import time
+import json
 from datetime import datetime, timedelta
-from typing import Dict, Any, List
-from celery import current_task
+from typing import Dict, Any, List, Optional
+from celery import current_task, chain, group
 from sqlalchemy.orm import Session
 from app.core.celery_app import celery_app
 from app.database import SessionLocal
-from app.models.workflow import Workflow, WorkflowNode, WorkflowConnection
+from app.models.workflow import Workflow, WorkflowNode, WorkflowConnection, NodeType, ConnectionType
 from app.models.execution import WorkflowExecution, ExecutionLog, ExecutionStatus, NodeExecutionStatus
 from app.models.integration import OAuthToken
 from app.services.workflow_engine import WorkflowEngine
 from app.services.oauth_manager import OAuthManager
+from app.services.node_executor import NodeExecutor
 
 
 @celery_app.task(bind=True)
@@ -67,79 +69,230 @@ def execute_workflow(self, workflow_id: int, trigger_data: Dict[str, Any] = None
         db.close()
 
 
+@celery_app.task(bind=True)
+def execute_single_node(self, node_id: str, input_data: Dict[str, Any], execution_id: str, test_mode: bool = False):
+    """Execute a single workflow node"""
+    db = SessionLocal()
+    try:
+        # Get node
+        node = db.query(WorkflowNode).filter(WorkflowNode.node_id == node_id).first()
+        if not node:
+            raise ValueError(f"Node {node_id} not found")
+        
+        # Get execution
+        execution = db.query(WorkflowExecution).filter(WorkflowExecution.execution_id == execution_id).first()
+        if not execution:
+            raise ValueError(f"Execution {execution_id} not found")
+        
+        # Execute node
+        executor = NodeExecutor(db)
+        start_time = time.time()
+        
+        # Log node start
+        log = ExecutionLog(
+            execution_id=execution.id,
+            node_id=node.node_id,
+            node_name=node.name,
+            node_type=node.node_type.value,
+            status=NodeExecutionStatus.RUNNING,
+            input_data=input_data,
+            started_at=datetime.utcnow()
+        )
+        db.add(log)
+        db.commit()
+        
+        try:
+            if test_mode:
+                result = executor.test_node(node, input_data)
+            else:
+                result = executor.execute_node(node, input_data)
+            
+            execution_time = int((time.time() - start_time) * 1000)
+            
+            # Update log with success
+            log.status = NodeExecutionStatus.COMPLETED
+            log.output_data = result
+            log.execution_time_ms = execution_time
+            log.completed_at = datetime.utcnow()
+            db.commit()
+            
+            return {
+                "node_id": node_id,
+                "success": True,
+                "result": result,
+                "execution_time_ms": execution_time
+            }
+            
+        except Exception as e:
+            execution_time = int((time.time() - start_time) * 1000)
+            
+            # Update log with error
+            log.status = NodeExecutionStatus.FAILED
+            log.error_message = str(e)
+            log.execution_time_ms = execution_time
+            log.completed_at = datetime.utcnow()
+            db.commit()
+            
+            raise
+            
+    except Exception as e:
+        raise
+    finally:
+        db.close()
+
+
+@celery_app.task(bind=True)
+def execute_workflow_chain(self, workflow_id: int, node_sequence: List[str], execution_id: str, 
+                          initial_data: Dict[str, Any] = None, test_mode: bool = False):
+    """Execute a sequence of nodes in order"""
+    db = SessionLocal()
+    try:
+        current_data = initial_data or {}
+        
+        for node_id in node_sequence:
+            # Execute node with current data
+            result = execute_single_node.delay(node_id, current_data, execution_id, test_mode)
+            node_result = result.get()
+            
+            if not node_result["success"]:
+                raise Exception(f"Node {node_id} failed: {node_result.get('error_message', 'Unknown error')}")
+            
+            # Update current data with node output
+            current_data[node_id] = node_result["result"]
+        
+        return {
+            "success": True,
+            "final_data": current_data
+        }
+        
+    except Exception as e:
+        raise
+    finally:
+        db.close()
+
+
+@celery_app.task(bind=True)
+def execute_parallel_nodes(self, node_ids: List[str], input_data: Dict[str, Any], execution_id: str, 
+                          test_mode: bool = False):
+    """Execute multiple nodes in parallel"""
+    try:
+        # Create tasks for each node
+        tasks = []
+        for node_id in node_ids:
+            task = execute_single_node.delay(node_id, input_data, execution_id, test_mode)
+            tasks.append(task)
+        
+        # Wait for all tasks to complete
+        results = []
+        for task in tasks:
+            result = task.get()
+            results.append(result)
+        
+        return {
+            "success": all(r["success"] for r in results),
+            "results": results
+        }
+        
+    except Exception as e:
+        raise
+
+
+@celery_app.task(bind=True)
+def trigger_workflow(self, workflow_id: int, trigger_type: str, trigger_data: Dict[str, Any] = None):
+    """Trigger a workflow based on external events"""
+    try:
+        # Validate trigger
+        db = SessionLocal()
+        workflow = db.query(Workflow).filter(Workflow.id == workflow_id, Workflow.is_active == True).first()
+        if not workflow:
+            raise ValueError(f"Active workflow {workflow_id} not found")
+        
+        # Check if workflow has the specified trigger type
+        trigger_config = workflow.trigger_config or {}
+        if trigger_type not in trigger_config.get("types", []):
+            raise ValueError(f"Workflow {workflow_id} does not support trigger type: {trigger_type}")
+        
+        # Execute workflow
+        result = execute_workflow.delay(workflow_id, trigger_data)
+        return {
+            "workflow_id": workflow_id,
+            "trigger_type": trigger_type,
+            "task_id": result.id,
+            "status": "triggered"
+        }
+        
+    except Exception as e:
+        raise
+    finally:
+        if 'db' in locals():
+            db.close()
+
+
 @celery_app.task
 def cleanup_expired_tokens():
     """Clean up expired OAuth tokens"""
     db = SessionLocal()
     try:
+        # Find expired tokens
         expired_tokens = db.query(OAuthToken).filter(
             OAuthToken.expires_at < datetime.utcnow(),
             OAuthToken.is_valid == True
         ).all()
         
+        # Mark as invalid
         for token in expired_tokens:
             token.is_valid = False
         
         db.commit()
-        return f"Cleaned up {len(expired_tokens)} expired tokens"
+        
+        return {
+            "cleaned_tokens": len(expired_tokens)
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise
     finally:
         db.close()
 
 
 @celery_app.task
-def refresh_oauth_tokens():
-    """Refresh OAuth tokens that are about to expire"""
+def cleanup_old_executions():
+    """Clean up old execution logs (older than 30 days)"""
     db = SessionLocal()
     try:
-        oauth_manager = OAuthManager(db)
+        cutoff_date = datetime.utcnow() - timedelta(days=30)
         
-        # Find tokens expiring in the next hour
-        expiry_threshold = datetime.utcnow() + timedelta(hours=1)
-        expiring_tokens = db.query(OAuthToken).filter(
-            OAuthToken.expires_at < expiry_threshold,
-            OAuthToken.is_valid == True,
-            OAuthToken.refresh_token.isnot(None)
-        ).all()
+        # Delete old execution logs
+        deleted_logs = db.query(ExecutionLog).filter(
+            ExecutionLog.created_at < cutoff_date
+        ).delete()
         
-        refreshed_count = 0
-        for token in expiring_tokens:
-            try:
-                success = oauth_manager.refresh_token(token)
-                if success:
-                    refreshed_count += 1
-            except Exception as e:
-                # Log error but continue with other tokens
-                print(f"Failed to refresh token {token.id}: {e}")
+        # Delete old executions (keep metadata)
+        deleted_executions = db.query(WorkflowExecution).filter(
+            WorkflowExecution.created_at < cutoff_date,
+            WorkflowExecution.status.in_([ExecutionStatus.COMPLETED, ExecutionStatus.FAILED])
+        ).delete()
         
         db.commit()
-        return f"Refreshed {refreshed_count} tokens"
+        
+        return {
+            "deleted_logs": deleted_logs,
+            "deleted_executions": deleted_executions
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise
     finally:
         db.close()
 
 
 @celery_app.task
-def test_workflow_connection(integration_id: int, node_config: Dict[str, Any]):
-    """Test a workflow node connection"""
-    db = SessionLocal()
-    try:
-        # This would test the specific integration connection
-        # Implementation depends on the integration type
-        return {"success": True, "message": "Connection test successful"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-    finally:
-        db.close()
-
-
-@celery_app.task
-def send_webhook_notification(webhook_url: str, payload: Dict[str, Any]):
-    """Send webhook notification"""
-    import httpx
-    
-    try:
-        with httpx.Client(timeout=30.0) as client:
-            response = client.post(webhook_url, json=payload)
-            response.raise_for_status()
-            return {"success": True, "status_code": response.status_code}
-    except Exception as e:
-        return {"success": False, "error": str(e)} 
+def health_check():
+    """Health check task for monitoring"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "celery_worker": True
+    } 

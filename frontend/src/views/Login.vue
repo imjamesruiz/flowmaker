@@ -68,6 +68,12 @@
             {{ loading ? 'Signing in...' : 'Sign in' }}
           </button>
         </div>
+
+        <div class="text-center">
+          <router-link to="/forgot-password" class="font-medium text-indigo-600 hover:text-indigo-500">
+            Forgot your password?
+          </router-link>
+        </div>
       </form>
     </div>
   </div>

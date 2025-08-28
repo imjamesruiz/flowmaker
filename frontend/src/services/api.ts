@@ -11,6 +11,15 @@ const api = axios.create({
   },
 })
 
+// Create a separate axios instance for refresh token requests (no interceptors)
+const refreshApi = axios.create({
+  baseURL: 'http://localhost:8000/api/v1',
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
 // Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
@@ -34,12 +43,12 @@ api.interceptors.response.use(
     const originalRequest = error.config
     const authStore = useAuthStore()
 
-    // Handle 401 errors (unauthorized)
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    // Handle 401 errors (unauthorized) but skip refresh token requests to prevent infinite loops
+    if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.url?.includes('/auth/refresh')) {
       originalRequest._retry = true
 
       try {
-        // Try to refresh token
+        // Try to refresh token using the separate instance
         await authStore.refreshToken()
         
         // Retry original request with new token
@@ -78,7 +87,14 @@ export const authAPI = {
   register: (userData: { email: string; password: string; name: string }) => 
     api.post('/auth/register', userData),
   getProfile: () => api.get('/auth/me'),
-  refreshToken: () => api.post('/auth/refresh'),
+  refreshToken: () => {
+    const authStore = useAuthStore()
+    const headers: any = {}
+    if (authStore.token) {
+      headers.Authorization = `Bearer ${authStore.token}`
+    }
+    return refreshApi.post('/auth/refresh', {}, { headers })
+  },
 }
 
 export const workflowAPI = {

@@ -81,7 +81,9 @@ export const useWorkflowsStore = defineStore('workflows', () => {
     loading.value = true
     error.value = null
     try {
+      console.log('Store: Sending bulk update request:', { id, workflowData })
       const response = await api.put(`/workflows/${id}/bulk`, workflowData)
+      console.log('Store: Bulk update response:', response.data)
       const index = workflows.value.findIndex(w => w.id === id)
       if (index !== -1) {
         workflows.value[index] = response.data
@@ -91,6 +93,7 @@ export const useWorkflowsStore = defineStore('workflows', () => {
       }
       return response.data
     } catch (err) {
+      console.error('Store: Bulk update error:', err)
       error.value = err.message
       throw err
     } finally {
