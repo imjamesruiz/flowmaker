@@ -92,6 +92,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/demo/trigger-action',
+    name: 'TriggerActionDemo',
+    component: () => import('@/views/TriggerActionDemo.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/NotFound.vue')

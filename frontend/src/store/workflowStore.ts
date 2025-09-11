@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import { Workflow, NodeModel, EdgeModel } from '@/types/graph'
 import { validateGraph, isValidConnection, Connection } from '@/utils/validation'
+import type { Integration, TriggerSchema, ActionSchema } from '@/types/integrations'
 
 interface WorkflowState {
   // Core state
@@ -16,6 +17,7 @@ interface WorkflowState {
   
   // Actions
   addNode: (type: string, position: { x: number; y: number }) => void
+  addIntegrationNode: (integration: Integration, triggerOrAction: TriggerSchema | ActionSchema, config: Record<string, any>, position: { x: number; y: number }) => void
   updateNode: (id: string, patch: Partial<NodeModel>) => void
   removeNode: (id: string) => void
   addEdge: (edge: EdgeModel) => void
@@ -92,6 +94,37 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       label: `${type.charAt(0).toUpperCase() + type.slice(1)} ${workflow.nodes.length + 1}`,
       ports: getDefaultPorts(type),
       params: getDefaultParams(type)
+    }
+
+    set(state => ({
+      workflow: {
+        ...state.workflow,
+        nodes: [...state.workflow.nodes, newNode]
+      }
+    }))
+
+    get()._addToHistory()
+    get().validateGraph()
+  },
+
+  addIntegrationNode: (integration, triggerOrAction, config, position) => {
+    const { workflow } = get()
+    const isTrigger = 'outputSchema' in triggerOrAction
+    
+    const newNode: NodeModel = {
+      id: nanoid(),
+      type: isTrigger ? 'trigger' : 'action',
+      label: `${integration.name} - ${triggerOrAction.name}`,
+      ports: getIntegrationPorts(triggerOrAction, isTrigger),
+      params: {
+        integrationId: integration.id,
+        integrationName: integration.name,
+        triggerOrActionId: triggerOrAction.id,
+        triggerOrActionName: triggerOrAction.name,
+        config,
+        icon: integration.icon,
+        ...config
+      }
     }
 
     set(state => ({
@@ -320,4 +353,20 @@ function getDefaultParams(type: string) {
   }
   
   return paramSchemas[type] || {}
+}
+
+function getIntegrationPorts(triggerOrAction: TriggerSchema | ActionSchema, isTrigger: boolean) {
+  if (isTrigger) {
+    const trigger = triggerOrAction as TriggerSchema
+    return {
+      in: [],
+      out: [{ id: 'out', dtype: 'event', required: false }]
+    }
+  } else {
+    const action = triggerOrAction as ActionSchema
+    return {
+      in: [{ id: 'in', dtype: 'any', required: true }],
+      out: [{ id: 'out', dtype: 'json', required: false }]
+    }
+  }
 }

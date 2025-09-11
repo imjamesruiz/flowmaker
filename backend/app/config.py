@@ -1,5 +1,5 @@
 import os
-from typing import Optional, List
+from typing import Optional, List, Any
 
 # Try to import pydantic_settings, fallback to pydantic if not available
 try:
@@ -8,6 +8,10 @@ except ImportError:
     try:
         from pydantic import BaseSettings
         from pydantic import Field
+        try:
+            from pydantic import field_validator  # type: ignore
+        except ImportError:
+            field_validator = None  # fallback handled below
         # Create a simple SettingsConfigDict equivalent
         class SettingsConfigDict:
             def __init__(self, **kwargs):
@@ -19,6 +23,7 @@ except ImportError:
         raise ImportError("Please install pydantic: pip install pydantic")
 
 from .utils.fix_env_encoding import fix_env_file_encoding
+from pydantic import field_validator as v2_field_validator  # pydantic v2
 
 
 BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -55,8 +60,21 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Worqly"
     
     # CORS
-    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001,http://localhost:5173"
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3001", "http://localhost:5173"]
+    CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"
+    BACKEND_CORS_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+
+    # Supabase
+    USE_SUPABASE_AUTH: bool = False
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_JWKS_URL: Optional[str] = None  # if not provided, derived from SUPABASE_URL
+    SUPABASE_AUDIENCE: Optional[str] = None
+    SUPABASE_ISSUER: Optional[str] = None
+    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
     
     # Application Configuration
     ENVIRONMENT: str = "development"
@@ -77,6 +95,28 @@ class Settings(BaseSettings):
         case_sensitive=True,
         extra="ignore"
     )
+
+    # Accept both JSON list (e.g., ["http://..."]) and comma-separated string for BACKEND_CORS_ORIGINS
+    @v2_field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    @classmethod
+    def _coerce_cors_origins(cls, value: Any) -> Any:
+        if value is None:
+            return value
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            s = value.strip()
+            if not s:
+                return []
+            if s.startswith("["):
+                import json
+                try:
+                    return json.loads(s)
+                except Exception:
+                    # fallback to comma split if not valid json
+                    pass
+            return [item.strip() for item in s.split(",") if item.strip()]
+        return value
 
 
 try:

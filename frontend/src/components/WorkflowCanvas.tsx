@@ -27,6 +27,7 @@ import { workflowAPI } from '@/mocks/workflows'
 import { isValidConnection } from '@/utils/validation'
 import { EdgeModel } from '@/types/graph'
 import WorkflowNode from './WorkflowNode'
+import TriggerActionManager from './TriggerActionManager.vue'
 import { nanoid } from 'nanoid'
 
 // Node types
@@ -329,6 +330,11 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({ workflowId }) =>
                 {isSimulating ? 'Simulating...' : 'Simulate'}
               </button>
             </div>
+          </Panel>
+
+          {/* Trigger/Action Creation Panel */}
+          <Panel position="top-center" className="bg-white p-4 rounded-lg shadow-lg">
+            <TriggerActionManager />
           </Panel>
 
           {/* Undo/Redo panel */}

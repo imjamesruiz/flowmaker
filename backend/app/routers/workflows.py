@@ -18,7 +18,7 @@ from app.services.workflow_executor import WorkflowExecutor
 router = APIRouter()
 
 
-@router.get("/workflows", response_model=List[WorkflowResponse])
+@router.get("", response_model=List[WorkflowResponse])
 def get_workflows(
     skip: int = 0,
     limit: int = 100,
@@ -32,7 +32,7 @@ def get_workflows(
     return workflows
 
 
-@router.post("/workflows", response_model=WorkflowResponse)
+@router.post("", response_model=WorkflowResponse)
 def create_workflow(
     workflow_data: WorkflowCreate,
     current_user: User = Depends(get_current_active_user),
@@ -40,7 +40,7 @@ def create_workflow(
 ):
     """Create a new workflow"""
     workflow = Workflow(
-        **workflow_data.dict(),
+        **workflow_data.model_dump(),
         owner_id=current_user.id
     )
     db.add(workflow)
@@ -49,7 +49,7 @@ def create_workflow(
     return workflow
 
 
-@router.get("/workflows/{workflow_id}", response_model=WorkflowWithNodes)
+@router.get("/{workflow_id}", response_model=WorkflowWithNodes)
 def get_workflow(
     workflow_id: int,
     current_user: User = Depends(get_current_active_user),
@@ -70,7 +70,7 @@ def get_workflow(
     return workflow
 
 
-@router.put("/workflows/{workflow_id}", response_model=WorkflowResponse)
+@router.put("/{workflow_id}", response_model=WorkflowResponse)
 def update_workflow(
     workflow_id: int,
     workflow_data: WorkflowUpdate,
@@ -89,7 +89,7 @@ def update_workflow(
             detail="Workflow not found"
         )
     
-    for field, value in workflow_data.dict(exclude_unset=True).items():
+    for field, value in workflow_data.model_dump(exclude_unset=True).items():
         setattr(workflow, field, value)
     
     db.commit()
@@ -97,7 +97,7 @@ def update_workflow(
     return workflow
 
 
-@router.put("/workflows/{workflow_id}/bulk", response_model=WorkflowWithNodes)
+@router.put("/{workflow_id}/bulk", response_model=WorkflowWithNodes)
 def update_workflow_bulk(
     workflow_id: int,
     workflow_data: WorkflowBulkUpdate,
@@ -168,7 +168,7 @@ def update_workflow_bulk(
         )
 
 
-@router.post("/workflows/{workflow_id}/validate", response_model=WorkflowValidationResult)
+@router.post("/{workflow_id}/validate", response_model=WorkflowValidationResult)
 def validate_workflow(
     workflow_id: int,
     workflow_data: WorkflowBulkUpdate,
@@ -212,7 +212,7 @@ def validate_workflow(
     )
 
 
-@router.delete("/workflows/{workflow_id}")
+@router.delete("/{workflow_id}")
 def delete_workflow(
     workflow_id: int,
     current_user: User = Depends(get_current_active_user),
@@ -235,7 +235,7 @@ def delete_workflow(
     return {"message": "Workflow deleted successfully"}
 
 
-@router.post("/workflows/{workflow_id}/execute")
+@router.post("/{workflow_id}/execute")
 def execute_workflow_endpoint(
     workflow_id: int,
     execution_request: WorkflowExecutionRequest,
@@ -268,7 +268,7 @@ def execute_workflow_endpoint(
     }
 
 
-@router.post("/workflows/{workflow_id}/test", response_model=ExecutionResult)
+@router.post("/{workflow_id}/test", response_model=ExecutionResult)
 def test_workflow_endpoint(
     workflow_id: int,
     execution_request: WorkflowExecutionRequest,
@@ -327,7 +327,7 @@ def test_workflow_endpoint(
 
 
 # Node endpoints
-@router.get("/workflows/{workflow_id}/nodes", response_model=List[WorkflowNodeResponse])
+@router.get("/{workflow_id}/nodes", response_model=List[WorkflowNodeResponse])
 def get_workflow_nodes(
     workflow_id: int,
     current_user: User = Depends(get_current_active_user),
@@ -348,7 +348,7 @@ def get_workflow_nodes(
     return workflow.nodes
 
 
-@router.post("/workflows/{workflow_id}/nodes", response_model=WorkflowNodeResponse)
+@router.post("/{workflow_id}/nodes", response_model=WorkflowNodeResponse)
 def create_workflow_node(
     workflow_id: int,
     node_data: WorkflowNodeCreate,
@@ -368,7 +368,7 @@ def create_workflow_node(
         )
     
     node = WorkflowNode(
-        **node_data.dict(),
+        **node_data.model_dump(),
         workflow_id=workflow_id
     )
     db.add(node)
@@ -377,7 +377,7 @@ def create_workflow_node(
     return node
 
 
-@router.put("/workflows/{workflow_id}/nodes/{node_id}", response_model=WorkflowNodeResponse)
+@router.put("/{workflow_id}/nodes/{node_id}", response_model=WorkflowNodeResponse)
 def update_workflow_node(
     workflow_id: int,
     node_id: int,
@@ -398,7 +398,7 @@ def update_workflow_node(
             detail="Node not found"
         )
     
-    for field, value in node_data.dict(exclude_unset=True).items():
+    for field, value in node_data.model_dump(exclude_unset=True).items():
         setattr(node, field, value)
     
     db.commit()
@@ -406,7 +406,7 @@ def update_workflow_node(
     return node
 
 
-@router.delete("/workflows/{workflow_id}/nodes/{node_id}")
+@router.delete("/{workflow_id}/nodes/{node_id}")
 def delete_workflow_node(
     workflow_id: int,
     node_id: int,
@@ -432,7 +432,7 @@ def delete_workflow_node(
 
 
 # Connection endpoints
-@router.get("/workflows/{workflow_id}/connections", response_model=List[WorkflowConnectionResponse])
+@router.get("/{workflow_id}/connections", response_model=List[WorkflowConnectionResponse])
 def get_workflow_connections(
     workflow_id: int,
     current_user: User = Depends(get_current_active_user),
@@ -453,7 +453,7 @@ def get_workflow_connections(
     return workflow.connections
 
 
-@router.post("/workflows/{workflow_id}/connections", response_model=WorkflowConnectionResponse)
+@router.post("/{workflow_id}/connections", response_model=WorkflowConnectionResponse)
 def create_workflow_connection(
     workflow_id: int,
     connection_data: WorkflowConnectionCreate,
@@ -473,7 +473,7 @@ def create_workflow_connection(
         )
     
     connection = WorkflowConnection(
-        **connection_data.dict(),
+        **connection_data.model_dump(),
         workflow_id=workflow_id
     )
     db.add(connection)
@@ -482,7 +482,7 @@ def create_workflow_connection(
     return connection
 
 
-@router.put("/workflows/{workflow_id}/connections/{connection_id}", response_model=WorkflowConnectionResponse)
+@router.put("/{workflow_id}/connections/{connection_id}", response_model=WorkflowConnectionResponse)
 def update_workflow_connection(
     workflow_id: int,
     connection_id: int,
@@ -503,7 +503,7 @@ def update_workflow_connection(
             detail="Connection not found"
         )
     
-    for field, value in connection_data.dict(exclude_unset=True).items():
+    for field, value in connection_data.model_dump(exclude_unset=True).items():
         setattr(connection, field, value)
     
     db.commit()
@@ -511,7 +511,7 @@ def update_workflow_connection(
     return connection
 
 
-@router.delete("/workflows/{workflow_id}/connections/{connection_id}")
+@router.delete("/{workflow_id}/connections/{connection_id}")
 def delete_workflow_connection(
     workflow_id: int,
     connection_id: int,

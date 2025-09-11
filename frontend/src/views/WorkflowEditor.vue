@@ -23,6 +23,14 @@
         </div>
         
         <div class="flex items-center space-x-3">
+          <!-- Validation Status -->
+          <div v-if="!validateAllConnections().valid" class="flex items-center text-red-600 text-sm">
+            <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+            </svg>
+            Invalid connections
+          </div>
+          
           <button
             @click="testWorkflow"
             :disabled="!workflow.nodes.length"
@@ -33,7 +41,7 @@
           </button>
           <button
             @click="saveWorkflow"
-            :disabled="saving"
+            :disabled="saving || !validateAllConnections().valid"
             class="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <Save class="w-4 h-4 mr-2" />
@@ -669,7 +677,12 @@ const isValidConnection = (sourceNodeId, sourcePortId, targetNodeId, targetPortI
     return false
   }
   
-  // 3. Check if target port already has a connection
+  // 3. Validate port directions - only output to input connections are allowed
+  if (sourcePortId === 'input' || targetPortId === 'output') {
+    return false
+  }
+  
+  // 4. Check if target port already has a connection
   const existingConnection = workflow.connections.find(
     c => c.target_node_id === targetNodeId && c.target_port === targetPortId
   )
@@ -678,7 +691,7 @@ const isValidConnection = (sourceNodeId, sourcePortId, targetNodeId, targetPortI
     return false
   }
   
-  // 4. Check if this exact connection already exists
+  // 5. Check if this exact connection already exists
   const duplicateConnection = workflow.connections.find(
     c => c.source_node_id === sourceNodeId && 
          c.source_port === sourcePortId && 
@@ -690,7 +703,7 @@ const isValidConnection = (sourceNodeId, sourcePortId, targetNodeId, targetPortI
     return false
   }
   
-  // 5. Validate port types for condition nodes
+  // 6. Validate port types for condition nodes
   if (targetNode.node_type === 'condition' && targetPortId === 'input') {
     // Condition nodes can only have one input
     const conditionInputs = workflow.connections.filter(
@@ -899,8 +912,43 @@ const saveWorkflow = async (isAutosave = false) => {
   }
 }
 
+const validateAllConnections = () => {
+  const errors = []
+  
+  for (const connection of workflow.connections) {
+    if (!isValidConnection(
+      connection.source_node_id,
+      connection.source_port,
+      connection.target_node_id,
+      connection.target_port
+    )) {
+      // Provide more specific error messages
+      if (connection.source_node_id === connection.target_node_id) {
+        errors.push(`Self-loop detected: Node ${connection.source_node_id} cannot connect to itself`)
+      } else if (connection.source_port === 'input' || connection.target_port === 'output') {
+        errors.push(`Invalid connection direction: Cannot connect ${connection.source_port} to ${connection.target_port}`)
+      } else {
+        errors.push(`Invalid connection from ${connection.source_node_id} to ${connection.target_node_id}`)
+      }
+    }
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors
+  }
+}
+
 const performSave = async () => {
   if (saving.value) return
+  
+  // Validate connections before saving
+  const validation = validateAllConnections()
+  if (!validation.valid) {
+    console.error('Invalid workflow connections. Save aborted.')
+    toast.error(`Cannot save workflow: ${validation.errors.join(', ')}`)
+    return
+  }
   
   saving.value = true
   

@@ -29,7 +29,20 @@ const WorkflowNode: React.FC<NodeProps<WorkflowNodeData>> = ({ data, selected })
 
       {/* Node header */}
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold text-gray-900 text-sm">{node.label}</h3>
+        <div className="flex items-center space-x-2">
+          {/* Integration Icon */}
+          {node.params?.icon && (
+            <div 
+              className="w-6 h-6 rounded-lg flex items-center justify-center text-sm"
+              style={{ backgroundColor: node.params.icon.bgColor.replace('bg-', '').replace('-50', '') + '20' }}
+            >
+              <span style={{ color: node.params.icon.color.replace('text-', '').replace('-600', '') }}>
+                {node.params.icon.name}
+              </span>
+            </div>
+          )}
+          <h3 className="font-semibold text-gray-900 text-sm">{node.label}</h3>
+        </div>
         <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded">
           {node.type}
         </span>

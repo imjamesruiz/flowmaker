@@ -1,5 +1,6 @@
 import axios, { AxiosResponse } from 'axios'
 import { useAuthStore } from '@/stores/auth'
+import { supabase } from '@/lib/supabaseClient'
 import { Workflow, WFNode, WFEdge, ExecutionResult } from '@/types/workflow'
 
 // Create axios instance
@@ -9,6 +10,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 })
 
 // Create a separate axios instance for refresh token requests (no interceptors)
@@ -18,15 +20,15 @@ const refreshApi = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 })
 
 // Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
     const authStore = useAuthStore()
-    if (authStore.token) {
-      config.headers.Authorization = `Bearer ${authStore.token}`
-    }
+    // Prefer Supabase access token if present
+    if (authStore.token) config.headers.Authorization = `Bearer ${authStore.token}`
     return config
   },
   (error) => {
@@ -84,17 +86,14 @@ interface WorkflowExecutionRequest {
 export const authAPI = {
   login: (credentials: { email: string; password: string }) => 
     api.post('/auth/login', credentials),
-  register: (userData: { email: string; password: string; name: string }) => 
+  register: (userData: { email: string; password: string; confirm_password: string; full_name?: string }) => 
     api.post('/auth/register', userData),
   getProfile: () => api.get('/auth/me'),
   refreshToken: () => {
-    const authStore = useAuthStore()
-    const headers: any = {}
-    if (authStore.token) {
-      headers.Authorization = `Bearer ${authStore.token}`
-    }
-    return refreshApi.post('/auth/refresh', {}, { headers })
+    // Rely on httpOnly cookie set by server
+    return refreshApi.post('/auth/refresh', {})
   },
+  logout: () => api.post('/auth/logout'),
 }
 
 export const workflowAPI = {

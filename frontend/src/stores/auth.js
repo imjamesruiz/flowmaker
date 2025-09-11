@@ -1,10 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authAPI } from '@/services/api'
+import { supabase } from '@/lib/supabaseClient'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref(null)
   const token = ref(localStorage.getItem('token'))
+  const refreshTokenTimeoutId = ref(null)
   const loading = ref(false)
   const isRefreshing = ref(false)
 
@@ -13,14 +15,15 @@ export const useAuthStore = defineStore('auth', () => {
   const login = async (credentials) => {
     loading.value = true
     try {
-      const response = await authAPI.login(credentials)
-      const { access_token, user: userData } = response.data
-      
-      token.value = access_token
-      user.value = userData
-      localStorage.setItem('token', access_token)
-      
-      return response.data
+      const { data, error } = await supabase.auth.signInWithPassword({ 
+        email: credentials.email, 
+        password: credentials.password 
+      })
+      if (error) throw error
+      token.value = data.session?.access_token || null
+      user.value = data.user
+      if (token.value) localStorage.setItem('token', token.value)
+      return data
     } catch (error) {
       throw error
     } finally {
@@ -31,21 +34,17 @@ export const useAuthStore = defineStore('auth', () => {
   const register = async (userData) => {
     loading.value = true
     try {
-      const response = await authAPI.register(userData)
-      // After successful registration, automatically log the user in
-      if (response.data) {
-        // Try to login with the same credentials
-        try {
-          await login({
-            email: userData.email,
-            password: userData.password
-          })
-        } catch (loginError) {
-          // If auto-login fails, just return the registration response
-          console.warn('Auto-login after registration failed:', loginError)
-        }
+      const { data, error } = await supabase.auth.signUp({ 
+        email: userData.email, 
+        password: userData.password 
+      })
+      if (error) throw error
+      if (data.session?.access_token) {
+        token.value = data.session.access_token
+        user.value = data.user
+        localStorage.setItem('token', token.value)
       }
-      return response.data
+      return data
     } catch (error) {
       throw error
     } finally {
@@ -55,10 +54,15 @@ export const useAuthStore = defineStore('auth', () => {
 
   const logout = async () => {
     try {
+      try { await authAPI.logout?.() } catch {}
       // Clear local state
       user.value = null
       token.value = null
       localStorage.removeItem('token')
+      if (refreshTokenTimeoutId.value) {
+        clearTimeout(refreshTokenTimeoutId.value)
+        refreshTokenTimeoutId.value = null
+      }
     } catch (error) {
       console.error('Logout error:', error)
     }
@@ -68,42 +72,34 @@ export const useAuthStore = defineStore('auth', () => {
     if (!token.value) return
     
     try {
-      const response = await authAPI.getProfile()
-      user.value = response.data
+      const { data: sessionData } = await supabase.auth.getSession()
+      if (sessionData.session?.access_token) {
+        token.value = sessionData.session.access_token
+        const { data: userData } = await supabase.auth.getUser()
+        user.value = userData.user
+      } else {
+        await logout()
+      }
     } catch (error) {
-      // Token might be invalid, clear it
       await logout()
       throw error
     }
   }
 
   const refreshToken = async () => {
-    if (!token.value) {
-      throw new Error('No token available to refresh')
-    }
-    
-    // Prevent multiple simultaneous refresh attempts
-    if (isRefreshing.value) {
-      // Wait for the current refresh to complete
-      while (isRefreshing.value) {
-        await new Promise(resolve => setTimeout(resolve, 100))
-      }
-      return token.value
-    }
-    
+    if (isRefreshing.value) return token.value
     isRefreshing.value = true
     
     try {
-      // Use the refreshApi instance directly with the current token
-      const response = await authAPI.refreshToken()
-      const { access_token } = response.data
-      
-      token.value = access_token
-      localStorage.setItem('token', access_token)
-      
-      return access_token
+      const { data } = await supabase.auth.getSession()
+      token.value = data.session?.access_token || null
+      if (token.value) {
+        localStorage.setItem('token', token.value)
+      } else {
+        await logout()
+      }
+      return token.value
     } catch (error) {
-      // If refresh fails, clear the token and logout
       await logout()
       throw error
     } finally {
@@ -120,6 +116,16 @@ export const useAuthStore = defineStore('auth', () => {
         console.error('Failed to fetch user:', error)
       }
     }
+  }
+
+  const scheduleRefresh = (refreshExpiresInSeconds) => {
+    if (!refreshExpiresInSeconds) return
+    const skew = 60 // seconds before expiry
+    const delayMs = Math.max((refreshExpiresInSeconds - skew) * 1000, 30_000)
+    if (refreshTokenTimeoutId.value) clearTimeout(refreshTokenTimeoutId.value)
+    refreshTokenTimeoutId.value = setTimeout(() => {
+      refreshToken().catch(() => {})
+    }, delayMs)
   }
 
   return {

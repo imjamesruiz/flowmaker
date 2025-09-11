@@ -1,22 +1,25 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
+// Supabase token is read via auth store
 
 // Create axios instance
 const api = axios.create({
-  baseURL: 'http://localhost:8000/api/v1',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 })
 
 // Create a separate axios instance for refresh token requests (no interceptors)
 const refreshApi = axios.create({
-  baseURL: 'http://localhost:8000/api/v1',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 })
 
 // Request interceptor to add auth token
@@ -70,14 +73,7 @@ export const authAPI = {
   login: (credentials) => api.post('/auth/login', credentials),
   register: (userData) => api.post('/auth/register', userData),
   getProfile: () => api.get('/auth/me'),
-  refreshToken: () => {
-    const authStore = useAuthStore()
-    const headers = {}
-    if (authStore.token) {
-      headers.Authorization = `Bearer ${authStore.token}`
-    }
-    return refreshApi.post('/auth/refresh', {}, { headers })
-  },
+  refreshToken: () => refreshApi.post('/auth/refresh', {}),
 }
 
 export const passwordResetAPI = {
